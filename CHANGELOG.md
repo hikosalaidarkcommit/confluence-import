@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.3] - 2026-01-13
+### Added
+- "Cancel" button in the diff view to abort sync.
+### Changed
+- Simplified conflict resolution flow to open "Edit Whole File" directly.
+- Removed unused step-by-step conflict resolution UI and legacy code.
+
 ## [1.0.2] - 2026-01-13
 ### Added
 - Dedicated `FileDiffView` for clearer conflict inspection.

@@ -1,3 +1,16 @@
+# Release Notes - v1.0.3
+
+## Simplified Conflict Resolution Flow
+
+This release streamlines the conflict resolution process by taking you directly to the full file editor.
+
+### Key Changes
+- **Direct Edit Mode**: The "Conflict Detected" landing page has been removed. Clicking "Push to Confluence" now shows the "Edit Whole File" window directly when a conflict is found.
+- **Added Cancel Button**: Introduced a "Cancel" button in the diff view to allow users to easily abort the sync process.
+- **Cleaned Up UI**: Removed unused navigation and step-by-step resolution components for a cleaner experience.
+
+---
+
 # Release Notes - v1.0.2
 
 ## Enhanced Conflict Resolution & Logic Improvements
