@@ -1,6 +1,8 @@
 import { diff_match_patch, Diff } from 'diff-match-patch';
 // @ts-ignore
 import TurndownService from 'turndown';
+// @ts-ignore
+import { gfm } from 'turndown-plugin-gfm';
 import { DiffResult, DiffLine, ConflictBlock } from '../models';
 
 export class DiffEngine {
@@ -165,6 +167,8 @@ export class DiffEngine {
             headingStyle: 'atx',
             codeBlockStyle: 'fenced'
         });
+
+        turndownService.use(gfm);
 
         return turndownService.turndown(storageFormat);
     }

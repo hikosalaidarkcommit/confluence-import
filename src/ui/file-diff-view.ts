@@ -141,6 +141,7 @@ export interface FileDiffViewOptions {
     localContent: string;
     remoteContent: string;
     onResolve: (resolvedContent: string) => void;
+    onCancel?: () => void;
 }
 
 /**
@@ -152,6 +153,7 @@ export class FileDiffView {
     private remoteLines: string[];
     private container: HTMLElement;
     private onResolve: (resolvedContent: string) => void;
+    private onCancel?: () => void;
 
     // Track resolved state: maps difference index to chosen resolution
     private resolutions: Map<number, 'local' | 'remote' | 'both'> = new Map();
@@ -162,6 +164,7 @@ export class FileDiffView {
         this.remoteLines = options.remoteContent.split('\n');
         this.fileDiff = computeFileDiff(options.localContent, options.remoteContent);
         this.onResolve = options.onResolve;
+        this.onCancel = options.onCancel;
     }
 
     render(): void {
@@ -176,8 +179,15 @@ export class FileDiffView {
         const content = this.container.createDiv({ cls: 'file-diff__content' });
         this.buildLines(content);
 
-        // Footer with merge button
+        // Footer with action buttons
         const footer = this.container.createDiv({ cls: 'file-diff__footer modal-button-container' });
+
+        const cancelBtn = footer.createEl('button', { text: 'Cancel' });
+        cancelBtn.onclick = () => {
+            if (this.onCancel) {
+                this.onCancel();
+            }
+        };
 
         const mergeBtn = footer.createEl('button', { text: 'Merge & Push', cls: 'mod-cta' });
         mergeBtn.onclick = () => {

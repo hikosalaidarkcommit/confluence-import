@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.4] - 2026-01-13
+### Fixed
+- Table structure loss when merging changes from Confluence to Obsidian.
+
 ## [1.0.3] - 2026-01-13
 ### Added
 - "Cancel" button in the diff view to abort sync.

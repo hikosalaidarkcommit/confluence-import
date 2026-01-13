@@ -1,3 +1,14 @@
+# Release Notes - v1.0.4
+
+## Fixed Table Format Loss
+
+This release fixes a critical bug where table formatting was lost when merging content from Confluence.
+
+### Bug Fixes
+- **Table Preservation**: Added `turndown-plugin-gfm` to the conversion engine to ensure Confluence tables are correctly converted back to Markdown when merging changes into Obsidian. Previously, table structures were stripped, leaving only plain text.
+
+---
+
 # Release Notes - v1.0.3
 
 ## Simplified Conflict Resolution Flow
