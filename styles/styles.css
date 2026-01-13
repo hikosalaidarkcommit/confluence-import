@@ -60,3 +60,126 @@
   max-height: 400px;
   overflow-y: auto;
 }
+
+/* VS Code Style Conflict Markers */
+.conflict-region-current {
+  background-color: rgba(46, 160, 67, 0.2) !important;
+}
+
+.conflict-region-incoming {
+  background-color: rgba(56, 139, 253, 0.2) !important;
+}
+
+.conflict-actions-inline {
+  background-color: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  padding: 4px 8px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-radius: 4px;
+}
+
+.conflict-actions-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.conflict-action-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.conflict-action-btn:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.conflict-indicator {
+  font-weight: bold;
+  color: var(--text-accent);
+}
+
+.full-file-editor-container .cm-editor {
+  height: 100%;
+}
+
+/* File Diff View Styles */
+.file-diff__container {
+  font-family: var(--font-monospace);
+  font-size: 13px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.file-diff__header {
+  padding: 10px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  margin-bottom: 10px;
+}
+
+.file-diff__header h3 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.file-diff__content {
+  padding: 0 10px;
+}
+
+.file-diff__line {
+  padding: 2px 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 1.4em;
+  line-height: 1.4;
+}
+
+.file-diff__difference {
+  margin: 8px 0;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.file-diff__actions {
+  justify-content: flex-start;
+  gap: 4px;
+}
+
+.file-diff__char-highlight-local {
+  background-color: rgba(46, 160, 67, 0.4);
+  border-radius: 2px;
+}
+
+.file-diff__char-highlight-remote {
+  background-color: rgba(56, 139, 253, 0.4);
+  border-radius: 2px;
+}
+
+.file-diff__resolved {
+  opacity: 0.6;
+  position: relative;
+}
+
+.file-diff__resolved::after {
+  content: '✓';
+  position: absolute;
+  right: 8px;
+  color: var(--color-green);
+  font-weight: bold;
+}
+
+.file-diff__footer {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--background-modifier-border);
+}

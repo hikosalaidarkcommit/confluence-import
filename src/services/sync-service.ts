@@ -62,13 +62,14 @@ export class ConfluenceSyncService {
 
             // Step 4: Get local content
             const localMarkdown = await this.app.vault.read(file);
+            const { frontmatter, content: localBody } = this.extractFrontmatter(localMarkdown);
 
             // Step 5: Perform diff
             new Notice('🔄 Checking for conflicts...');
             const diffEngine = new DiffEngine();
             // remotePage.body.storage.value is XHTML.
             const diffResult = await diffEngine.compare(
-                localMarkdown,
+                localBody,
                 remotePage.body.storage.value
             );
             diffResult.remoteVersion = remotePage.version.number;
@@ -84,13 +85,23 @@ export class ConfluenceSyncService {
                     // Show conflict resolution modal
                     await this.showConflictResolution(diffResult, async (merged) => {
                         this.logger.info('Conflict resolved/Reviewed, uploading content');
-                        await this.uploadContent(
+                        const newVersion = await this.uploadContent(
                             apiClient,
                             pageInfo.pageId,
                             remotePage.title,
                             merged,
                             remotePage.version.number
                         );
+
+                        // Update local file with merged content
+                        // Reconstruct file with original frontmatter + merged body
+                        const fullContent = frontmatter ? frontmatter + '\n' + merged : merged;
+                        await this.app.vault.modify(file, fullContent);
+
+                        // Update version in frontmatter
+                        await this.updateVersionInFrontmatter(file, newVersion);
+
+                        this.logger.info('Updated local file with merged content and new version');
                     });
                 }
             } else {
@@ -111,7 +122,7 @@ export class ConfluenceSyncService {
         title: string,
         markdown: string,
         currentVersion: number
-    ): Promise<void> {
+    ): Promise<number> {
 
         // Convert markdown to Confluence storage format
         new Notice('📝 Converting content...');
@@ -125,7 +136,7 @@ export class ConfluenceSyncService {
 
         // Upload to Confluence
         new Notice('⬆ Uploading to Confluence...');
-        await apiClient.updatePage(
+        const updatedPage = await apiClient.updatePage(
             pageId,
             title,
             storageFormat,
@@ -133,6 +144,34 @@ export class ConfluenceSyncService {
         );
 
         new Notice('✅ Successfully pushed to Confluence!', 5000);
+        return updatedPage.version.number;
+    }
+
+    private async updateVersionInFrontmatter(file: TFile, newVersion: number): Promise<void> {
+        await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+            frontmatter['confluence-version'] = newVersion;
+        });
+        this.logger.info(`Updated local frontmatter version to ${newVersion}`);
+    }
+
+    private extractFrontmatter(content: string): { frontmatter: string; content: string } {
+        const lines = content.split('\n');
+        if (lines[0]?.trim() === '---') {
+            let endIndex = -1;
+            for (let i = 1; i < lines.length; i++) {
+                if (lines[i].trim() === '---') {
+                    endIndex = i;
+                    break;
+                }
+            }
+            if (endIndex !== -1) {
+                return {
+                    frontmatter: lines.slice(0, endIndex + 1).join('\n'),
+                    content: lines.slice(endIndex + 1).join('\n')
+                };
+            }
+        }
+        return { frontmatter: '', content };
     }
 
     private async showConflictResolution(

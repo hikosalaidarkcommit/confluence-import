@@ -1,3 +1,17 @@
+# Release Notes - v1.0.2
+
+## Enhanced Conflict Resolution & Logic Improvements
+
+This release brings significant improvements to the conflict resolution workflow and internal consistency.
+
+### Key Changes
+- **New Diff View**: Introduced a more robust file diff view for better comparison of local and remote changes.
+- **Improved Conflict Logic**: Added a dedicated confirmation modal for conflict resolutions.
+- **Markdown Normalization**: Enhanced internal markdown normalization to reduce false-positive conflicts.
+- **Core Improvements**: Refined sync service logic for better reliability.
+
+---
+
 # Release Notes - v1.0.1
 
 ## Project Reorganization & Documentation Improvements

@@ -80,4 +80,4 @@ A plugin that enables users to publish Obsidian notes to Confluence pages with c
 
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions.
+See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for build instructions.

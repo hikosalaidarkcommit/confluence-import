@@ -1,11 +1,104 @@
 import { App, Modal, Notice, Setting } from 'obsidian';
 import { DiffResult, ConflictBlock, DiffLine } from '../models';
+import { ConflictMarker } from '../conflict/conflict-marker';
+import { EditorView, ViewPlugin, Decoration, DecorationSet, ViewUpdate, WidgetType } from '@codemirror/view';
+import { RangeSetBuilder } from '@codemirror/state';
+import { FileDiffView } from './file-diff-view';
+
+// Widget for Interactive Conflict Buttons
+class ConflictActionsWidget extends WidgetType {
+    constructor(private onAction: (action: 'local' | 'remote' | 'both') => void) {
+        super();
+    }
+
+    toDOM() {
+        const div = document.createElement('div');
+        div.className = 'conflict-actions-inline';
+        div.style.userSelect = 'none'; // Prevent selection issues
+
+        const label = div.createSpan({ text: 'Resolve: ' });
+        label.style.fontWeight = 'bold';
+        label.style.marginRight = '8px';
+        label.style.color = 'var(--text-muted)';
+
+        const btnLocal = div.createEl('button', { text: 'Accept Local', cls: 'conflict-action-btn' });
+        btnLocal.onclick = (e) => { e.preventDefault(); this.onAction('local'); };
+        btnLocal.style.color = 'var(--color-green)';
+
+        div.createSpan({ text: ' | ' });
+
+        const btnRemote = div.createEl('button', { text: 'Accept Remote', cls: 'conflict-action-btn' });
+        btnRemote.onclick = (e) => { e.preventDefault(); this.onAction('remote'); };
+        btnRemote.style.color = 'var(--color-blue)';
+
+        div.createSpan({ text: ' | ' });
+
+        const btnBoth = div.createEl('button', { text: 'Accept Both', cls: 'conflict-action-btn' });
+        btnBoth.onclick = (e) => { e.preventDefault(); this.onAction('both'); };
+
+        return div;
+    }
+
+    eq(other: ConflictActionsWidget) { return false; } // Always update for safety
+}
+
+function resolveConflict(view: EditorView, startPos: number, action: 'local' | 'remote' | 'both') {
+    const startLine = view.state.doc.lineAt(startPos);
+
+    // Scan forward to find bounds
+    let scanLine = startLine;
+    let middle = -1;
+    let end = -1;
+    let endLine = null;
+
+    for (let i = 0; i < 5000; i++) {
+        if (scanLine.number >= view.state.doc.lines) break;
+        if (scanLine.text.startsWith('=======')) {
+            middle = scanLine.from;
+        }
+        if (scanLine.text.startsWith('>>>>>>>')) {
+            end = scanLine.from;
+            endLine = scanLine;
+            break;
+        }
+        scanLine = view.state.doc.line(scanLine.number + 1);
+    }
+
+    if (middle !== -1 && end !== -1 && endLine) {
+        const fullRangeFrom = startLine.from;
+        const fullRangeTo = endLine.to;
+        let replacement = '';
+
+        const middleLine = view.state.doc.lineAt(middle);
+
+        if (action === 'local') {
+            if (middleLine.from > startLine.to + 1) {
+                replacement = view.state.sliceDoc(startLine.to + 1, middleLine.from);
+            }
+        } else if (action === 'remote') {
+            if (endLine.from > middleLine.to + 1) {
+                replacement = view.state.sliceDoc(middleLine.to + 1, endLine.from);
+            }
+        } else if (action === 'both') {
+            const local = (middleLine.from > startLine.to + 1) ? view.state.sliceDoc(startLine.to + 1, middleLine.from) : '';
+            const remote = (endLine.from > middleLine.to + 1) ? view.state.sliceDoc(middleLine.to + 1, endLine.from) : '';
+            replacement = local + remote;
+        }
+
+        view.dispatch({
+            changes: { from: fullRangeFrom, to: fullRangeTo, insert: replacement }
+        });
+    }
+}
 
 export class ConflictResolutionModal extends Modal {
     private diffResult: DiffResult;
     private currentConflictIndex: number = 0;
     private resolutions: Map<number, 'local' | 'remote' | 'both' | 'manual'>;
     private manualContents: Map<number, string>;
+    private isFullFileEditMode: boolean = false;
+    private fullFileContent: string = '';
+    private editorView: EditorView | null = null;
 
     constructor(
         app: App,
@@ -23,6 +116,10 @@ export class ConflictResolutionModal extends Modal {
     }
 
     onClose() {
+        if (this.editorView) {
+            this.editorView.destroy();
+            this.editorView = null;
+        }
         const { contentEl } = this;
         contentEl.empty();
     }
@@ -32,6 +129,11 @@ export class ConflictResolutionModal extends Modal {
         contentEl.empty();
 
         contentEl.createEl('h2', { text: 'Confluence Sync - Conflicts Detected' });
+
+        if (this.isFullFileEditMode) {
+            this.renderFullFileEdit();
+            return;
+        }
 
         // Check if we have conflicts
         if (!this.diffResult.hasConflicts || this.diffResult.conflicts.length === 0) {
@@ -93,12 +195,19 @@ export class ConflictResolutionModal extends Modal {
                 }));
 
         if (currentResolution === 'manual') {
-            const manualText = this.manualContents.get(this.currentConflictIndex) ||
-                this.getConflictText(conflict.localLines); // default to local text
+            // Show GitHub-style conflict markers by default
+            const defaultManualContent =
+                '<<<<<<< Local (Your Version)\n' +
+                this.getConflictText(conflict.localLines) + '\n' +
+                '=======\n' +
+                this.getConflictText(conflict.remoteLines) + '\n' +
+                '>>>>>>> Remote (Confluence)';
+
+            const manualText = this.manualContents.get(this.currentConflictIndex) || defaultManualContent;
 
             const textArea = contentEl.createEl('textarea', { text: manualText, cls: 'manual-edit-area' });
             textArea.style.width = '100%';
-            textArea.style.height = '100px';
+            textArea.style.height = '200px';
             textArea.oninput = (e) => {
                 const target = e.target as HTMLTextAreaElement;
                 this.manualContents.set(this.currentConflictIndex, target.value);
@@ -109,6 +218,15 @@ export class ConflictResolutionModal extends Modal {
         const actionsDiv = contentEl.createDiv({ cls: 'modal-button-container' });
         const cancelBtn = actionsDiv.createEl('button', { text: 'Cancel' });
         cancelBtn.onclick = () => this.close();
+
+        const fullEditBtn = actionsDiv.createEl('button', { text: 'Edit Whole File' });
+        fullEditBtn.onclick = () => {
+            this.isFullFileEditMode = true;
+            // Generate content with markers using ConflictMarker
+            const marker = new ConflictMarker();
+            this.fullFileContent = marker.insertMarkers(this.diffResult.localContent, this.diffResult.conflicts);
+            this.render();
+        };
 
         const mergeBtn = actionsDiv.createEl('button', { text: 'Merge & Push', cls: 'mod-cta' });
         mergeBtn.onclick = async () => {
@@ -269,5 +387,42 @@ export class ConflictResolutionModal extends Modal {
         if (resolution === 'remote') return remotePart;
         if (resolution === 'both') return localPart + '\n' + remotePart;
         return localPart;
+    }
+
+    private renderFullFileEdit() {
+        const { contentEl } = this;
+
+        // Header with instructions
+        contentEl.createEl('p', {
+            text: 'Review differences between your local file and Confluence. Click the action buttons to resolve each difference.'
+        });
+
+        // Container for the diff view
+        const container = contentEl.createDiv({ cls: 'full-file-editor-container' });
+        container.style.maxHeight = '500px';
+        container.style.overflow = 'auto';
+        container.style.border = '1px solid var(--background-modifier-border)';
+        container.style.borderRadius = '4px';
+        container.style.marginBottom = '16px';
+
+        // Create the FileDiffView
+        const diffView = new FileDiffView({
+            container: container,
+            localContent: this.diffResult.localContent,
+            remoteContent: this.diffResult.remoteContent,
+            onResolve: async (resolvedContent: string) => {
+                this.close();
+                await this.onResolve(resolvedContent);
+            }
+        });
+        diffView.render();
+
+        // Back button (outside of FileDiffView's footer)
+        const actionsDiv = contentEl.createDiv({ cls: 'modal-button-container' });
+        const backBtn = actionsDiv.createEl('button', { text: 'Back to Step-by-Step' });
+        backBtn.onclick = () => {
+            this.isFullFileEditMode = false;
+            this.render();
+        };
     }
 }

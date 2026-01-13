@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.2] - 2026-01-13
+### Added
+- Dedicated `FileDiffView` for clearer conflict inspection.
+- `ConflictConfirmModal` for safer resolution confirmation.
+- `MarkdownNormalizer` utility for improved content comparison.
+### Changed
+- Refactored `SyncService` for better error handling and state management.
+- Improved styling for conflict resolution UI.
+
 ## [1.0.1] - 2026-01-13
 ### Changed
 - Moved documentation files to `docs/` folder for better organization.
