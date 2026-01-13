@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.5] - 2026-01-13
+### Added
+- Conversion of Confluence macros (Info, Note, etc.) back to Obsidian callouts in diff view.
+- Enhanced normalization for escaped underscores and whitespace in diff engine.
+### Changed
+- Improved list formatting consistency during XHTML-to-Markdown conversion.
+
 ## [1.0.4] - 2026-01-13
 ### Fixed
 - Table structure loss when merging changes from Confluence to Obsidian.

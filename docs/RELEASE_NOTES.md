@@ -1,3 +1,16 @@
+# Release Notes - v1.0.5
+
+## Enhanced Diff Accuracy & Macro Support
+
+This release improves the conflict resolution experience by making the remote content look more like your local Obsidian notes and refining the diffing logic to ignore minor formatting variations.
+
+### Key Changes
+- **Confluence Macro Conversion**: Confluence structured macros (Info, Note, Tip, Warning) are now converted back to Obsidian callouts in the diff view. This makes it much easier to compare your local callouts with remote content.
+- **Improved Diff Normalization**: The diffing engine now handles escaped underscores and extra spaces more intelligently, significantly reducing false-positive conflicts.
+- **List Normalization**: Improved list conversion to maintain consistent formatting between remote and local versions.
+
+---
+
 # Release Notes - v1.0.4
 
 ## Fixed Table Format Loss
