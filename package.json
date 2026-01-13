@@ -1,6 +1,6 @@
 {
     "name": "obsidian-confluence-sync",
-    "version": "1.0.6",
+    "version": "1.0.7",
     "description": "Sync Obsidian notes to Confluence with conflict detection and resolution.",
     "main": "main.js",
     "scripts": {

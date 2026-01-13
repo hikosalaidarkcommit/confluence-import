@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.7] - 2026-01-13
+### Fixed
+- Fixed invalid `querySelector` syntax causing a crash when parsing Confluence macros with namespaced attributes.
+
 ## [1.0.6] - 2026-01-13
 ### Fixed
 - "Headless" Confluence tables (missing `<thead>`) now convert correctly to Markdown tables.

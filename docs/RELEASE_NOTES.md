@@ -1,4 +1,15 @@
-# Release Notes - v1.0.6
+# Release Notes - v1.0.7
+
+## Critical Crash Fix for Macro Conversion
+
+This hotfix addresses a crash that occurred when processing certain Confluence macros in the diff view.
+
+### Bug Fixes
+- **Fixed `querySelector` Error**: Resolved a "Failed to execute 'querySelector' on 'Element': ... is not a valid selector" error. This was caused by an invalid CSS selector string used when extracting titles from Confluence macros (specifically handling namespaced attributes like `ac:name`). The logic has been simplified to use the normalized attribute names.
+
+---
+
+
 
 ## Robust Table Support & Conflict Improvements
 
