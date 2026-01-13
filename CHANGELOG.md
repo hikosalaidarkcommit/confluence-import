@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.6] - 2026-01-13
+### Fixed
+- "Headless" Confluence tables (missing `<thead>`) now convert correctly to Markdown tables.
+- False positive conflicts caused by differences in table separator row dashes.
+- Robustness of `turndown-plugin-gfm` import to ensure tables are always processed.
+
 ## [1.0.5] - 2026-01-13
 ### Added
 - Conversion of Confluence macros (Info, Note, etc.) back to Obsidian callouts in diff view.

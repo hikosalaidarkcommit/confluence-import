@@ -1,3 +1,16 @@
+# Release Notes - v1.0.6
+
+## Robust Table Support & Conflict Improvements
+
+This release addresses critical issues with table conversion and conflict detection, ensuring a smoother sync experience.
+
+### Key Changes
+- **Fixed "Headless" Tables**: Tables from Confluence that lack a distinct header row (thead) are now correctly converted to Markdown tables instead of being stripped to plain text.
+- **Smarter Table Diffing**: The diff engine now normalizes table separator rows (e.g., `|---|` vs `|-------|`), preventing false-positive conflicts where the content is identical but the formatting differs slightly.
+- **Robust Plugin Loading**: Improved the loading mechanism for the GitHub Flavored Markdown (GFM) plugin to prevent sporadic failures.
+
+---
+
 # Release Notes - v1.0.5
 
 ## Enhanced Diff Accuracy & Macro Support
