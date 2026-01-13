@@ -1,3 +1,15 @@
+# Release Notes - v1.0.8
+
+## Data Integrity & Conflict Improvements
+
+This release ensures data safety during merges and further reduces false-positive conflicts.
+
+### Key Changes
+- **Safer Merge Flow**: The local file is now updated **immediately** after resolving conflicts, before attempting to upload to Confluence. This ensures your resolution choices are saved locally even if the network upload fails.
+- **Improved Space Handling**: The diff engine now correctly ignores differences caused by Non-Breaking Spaces (`&nbsp;` / `\u00A0`), which are common in Confluence but invisible to the user. This eliminates "Phantom Conflicts" where the text looks identical.
+
+---
+
 # Release Notes - v1.0.7
 
 ## Critical Crash Fix for Macro Conversion

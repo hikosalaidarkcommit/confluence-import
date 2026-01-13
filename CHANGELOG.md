@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.8] - 2026-01-13
+### Changed
+- Reordered merge flow: Local file is now saved *before* Confluence upload to prevent data loss.
+### Fixed
+- Fixed false conflicts caused by Non-Breaking Spaces (NBSP) in Confluence content.
+
 ## [1.0.7] - 2026-01-13
 ### Fixed
 - Fixed invalid `querySelector` syntax causing a crash when parsing Confluence macros with namespaced attributes.
