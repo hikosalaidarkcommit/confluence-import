@@ -27,38 +27,157 @@ export class MarkdownToConfluenceConverter {
             this.readBinaryFile
         );
 
-        // 3. Convert Obsidian callouts
-        const withCallouts = this.convertCallouts(withImages);
+        // 3. Convert Obsidian callouts to placeholders (will be restored after marked)
+        const { content: withCalloutPlaceholders, callouts } = this.extractCallouts(withImages);
 
-        // 4. Convert wiki links
-        const withLinks = this.convertWikiLinks(withCallouts);
+        // 4. Convert wiki links to placeholders (will be restored after marked)
+        const { content: withLinkPlaceholders, links } = this.extractWikiLinks(withCalloutPlaceholders);
 
-        // 5. Convert markdown to HTML/Storage format
-        const storageFormat = await this.markdownToStorage(withLinks);
+        // 5. Extract task lists before marked processing (they will be converted to Confluence format after)
+        const { content: withTaskPlaceholders, taskLists } = this.extractTaskLists(withLinkPlaceholders);
+
+        // 6. Convert remaining markdown to HTML/Storage format using marked
+        let storageFormat = await this.markdownToStorage(withTaskPlaceholders);
+
+        // 7. Restore callouts as Confluence macros
+        storageFormat = this.restoreCallouts(storageFormat, callouts);
+
+        // 8. Restore wiki links as Confluence links
+        storageFormat = this.restoreWikiLinks(storageFormat, links);
+
+        // 9. Restore task lists as Confluence task list format
+        storageFormat = this.restoreTaskLists(storageFormat, taskLists);
 
         return storageFormat;
     }
 
-    private removeFrontmatter(markdown: string): string {
-        // Remove YAML frontmatter
-        return markdown.replace(/^---\n[\s\S]*?\n---\n/, '');
+    // ========== Extraction methods (before marked) ==========
+
+    private extractTaskLists(markdown: string): { content: string; taskLists: string[] } {
+        const lines = markdown.split('\n');
+        const result: string[] = [];
+        const taskLists: string[] = [];
+        let currentTaskBlock: string[] = [];
+        let inTaskList = false;
+        let placeholderIndex = 0;
+        let taskId = 1;
+
+        for (const line of lines) {
+            const checkedMatch = line.match(/^(\s*)-\s*\[x\]\s*(.*)$/i);
+            const uncheckedMatch = line.match(/^(\s*)-\s*\[\s*\]\s*(.*)$/);
+
+            if (checkedMatch || uncheckedMatch) {
+                if (!inTaskList) {
+                    inTaskList = true;
+                    currentTaskBlock = ['<ac:task-list>'];
+                }
+                const isChecked = !!checkedMatch;
+                const text = this.escapeXml(checkedMatch ? checkedMatch[2] : uncheckedMatch![2]);
+                const status = isChecked ? 'complete' : 'incomplete';
+
+                currentTaskBlock.push(`<ac:task>
+<ac:task-id>${taskId++}</ac:task-id>
+<ac:task-status>${status}</ac:task-status>
+<ac:task-body>${text}</ac:task-body>
+</ac:task>`);
+            } else {
+                if (inTaskList) {
+                    currentTaskBlock.push('</ac:task-list>');
+                    taskLists.push(currentTaskBlock.join('\n'));
+                    result.push(`%%TASK_LIST_${placeholderIndex++}%%`);
+                    currentTaskBlock = [];
+                    inTaskList = false;
+                }
+                result.push(line);
+            }
+        }
+
+        if (inTaskList) {
+            currentTaskBlock.push('</ac:task-list>');
+            taskLists.push(currentTaskBlock.join('\n'));
+            result.push(`%%TASK_LIST_${placeholderIndex}%%`);
+        }
+
+        return { content: result.join('\n'), taskLists };
     }
 
-    private convertCallouts(markdown: string): string {
+    private extractCallouts(markdown: string): { content: string; callouts: string[] } {
+        const callouts: string[] = [];
+        let placeholderIndex = 0;
+
         const calloutRegex = /> \[!(\w+)\]([^\n]*)\n((?:> [^\n]*\n?)*)/g;
 
-        return markdown.replace(calloutRegex, (match, type, title, content) => {
+        const content = markdown.replace(calloutRegex, (match, type, title, contentText) => {
             const macroType = this.mapCalloutType(type.toLowerCase());
-            const cleanContent = content.replace(/^> /gm, '').trim();
+            const cleanContent = contentText.replace(/^> /gm, '').trim();
             const cleanTitle = title.trim();
 
-            return `<ac:structured-macro ac:name="${macroType}">
-  ${cleanTitle ? `<ac:parameter ac:name="title">${cleanTitle}</ac:parameter>` : ''}
+            const confluenceMacro = `<ac:structured-macro ac:name="${macroType}">
+  ${cleanTitle ? `<ac:parameter ac:name="title">${this.escapeXml(cleanTitle)}</ac:parameter>` : ''}
   <ac:rich-text-body>
-    <p>${cleanContent}</p>
+    <p>${this.escapeXml(cleanContent)}</p>
   </ac:rich-text-body>
 </ac:structured-macro>`;
+
+            callouts.push(confluenceMacro);
+            return `%%CALLOUT_${placeholderIndex++}%%`;
         });
+
+        return { content, callouts };
+    }
+
+    private extractWikiLinks(markdown: string): { content: string; links: string[] } {
+        const links: string[] = [];
+        let placeholderIndex = 0;
+
+        const content = markdown.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (match, page, display) => {
+            const linkText = display || page;
+            const confluenceLink = `<ac:link><ri:page ri:content-title="${this.escapeXml(page)}" /><ac:plain-text-link-body><![CDATA[${linkText}]]></ac:plain-text-link-body></ac:link>`;
+            links.push(confluenceLink);
+            return `%%WIKI_LINK_${placeholderIndex++}%%`;
+        });
+
+        return { content, links };
+    }
+
+    // ========== Restoration methods (after marked) ==========
+
+    private restoreTaskLists(html: string, taskLists: string[]): string {
+        let result = html;
+        for (let i = 0; i < taskLists.length; i++) {
+            // The placeholder might be wrapped in <p> tags by marked
+            result = result.replace(new RegExp(`<p>%%TASK_LIST_${i}%%</p>`, 'g'), taskLists[i]);
+            result = result.replace(new RegExp(`%%TASK_LIST_${i}%%`, 'g'), taskLists[i]);
+        }
+        return result;
+    }
+
+    private restoreCallouts(html: string, callouts: string[]): string {
+        let result = html;
+        for (let i = 0; i < callouts.length; i++) {
+            result = result.replace(new RegExp(`<p>%%CALLOUT_${i}%%</p>`, 'g'), callouts[i]);
+            result = result.replace(new RegExp(`%%CALLOUT_${i}%%`, 'g'), callouts[i]);
+        }
+        return result;
+    }
+
+    private restoreWikiLinks(html: string, links: string[]): string {
+        let result = html;
+        for (let i = 0; i < links.length; i++) {
+            result = result.replace(new RegExp(`%%WIKI_LINK_${i}%%`, 'g'), links[i]);
+        }
+        return result;
+    }
+
+    // ========== Helper methods ==========
+
+    private escapeXml(text: string): string {
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&apos;');
     }
 
     private mapCalloutType(type: string): string {
@@ -75,12 +194,9 @@ export class MarkdownToConfluenceConverter {
         return mapping[type] || 'info';
     }
 
-    private convertWikiLinks(markdown: string): string {
-        // Convert [[Page Name]] to Confluence link
-        return markdown.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (match, page, display) => {
-            const linkText = display || page;
-            return `<ac:link><ri:page ri:content-title="${page}" /><ac:plain-text-link-body><![CDATA[${linkText}]]></ac:plain-text-link-body></ac:link>`;
-        });
+    private removeFrontmatter(markdown: string): string {
+        // Remove YAML frontmatter
+        return markdown.replace(/^---\n[\s\S]*?\n---\n/, '');
     }
 
     private async markdownToStorage(markdown: string): Promise<string> {
@@ -99,7 +215,12 @@ export class MarkdownToConfluenceConverter {
             return `<table><tbody>${header}${body}</tbody></table>`;
         };
 
-        marked.setOptions({ renderer });
+        marked.setOptions({
+            renderer,
+            breaks: true, // Convert single newlines to <br>
+            gfm: true,     // Ensure GFM is enabled
+            xhtml: true    // Ensure self-closing tags for XML/Confluence compliance
+        });
 
         return marked.parse(markdown);
     }

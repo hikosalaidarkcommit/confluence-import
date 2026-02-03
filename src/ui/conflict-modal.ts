@@ -48,8 +48,13 @@ export class ConflictResolutionModal extends Modal {
             localContent: this.diffResult.localContent,
             remoteContent: this.diffResult.remoteContent,
             onResolve: async (resolvedContent: string) => {
-                this.close();
-                await this.onResolve(resolvedContent);
+                try {
+                    await this.onResolve(resolvedContent);
+                    this.close();  // Only close if successful
+                } catch (error) {
+                    // Error is handled by sync-service, but don't close the modal
+                    // so user can retry or cancel
+                }
             },
             onCancel: () => {
                 this.close();

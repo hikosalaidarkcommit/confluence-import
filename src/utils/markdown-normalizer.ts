@@ -16,17 +16,20 @@
 function normalizeLine(line: string): string {
     let normalized = line;
 
-    // 1. Normalize line endings (already split by \n, but trim trailing \r)
+    // 1. Normalize line endings
     normalized = normalized.replace(/\r$/, '');
+
+    // 1b. Normalize non-breaking spaces (\u00A0) to normal spaces
+    // Confluence often uses NBSP which breaks simple string equality checks
+    normalized = normalized.replace(/\u00A0/g, ' ');
 
     // 2. Normalize list markers: convert `* ` to `- ` at any indentation level
     // Match: optional whitespace + asterisk + space
     normalized = normalized.replace(/^(\s*)\*\s/, '$1- ');
 
-    // 3. Normalize escaped brackets: `\[` -> `[` and `\]` -> `]`
-    // These are often escaped in Confluence but not in Obsidian
-    normalized = normalized.replace(/\\\[/g, '[');
-    normalized = normalized.replace(/\\\]/g, ']');
+    // 3. Normalize escaped characters: `\[`, `\*`, `\:`, `\_`, etc.
+    // Confluence and Turndown often escape these unnecessarily
+    normalized = normalized.replace(/\\([*:.\[\]_])/g, '$1');
 
     // 4. Normalize indentation: convert tabs to 4 spaces
     normalized = normalized.replace(/\t/g, '    ');
@@ -41,7 +44,22 @@ function normalizeLine(line: string): string {
         normalized = normalizedIndent + normalized.trimStart();
     }
 
-    // 6. Normalize trailing whitespace
+    // 6. Normalize table separator rows: collapses `-------` to `---`
+    // Identifies table separators (lines with only |, -, :, space)
+    if (/^\s*\|?[\s\-:|]+\|?\s*$/.test(normalized) && normalized.includes('---')) {
+        // Collapse multiple dashes to 3 dashes
+        normalized = normalized.replace(/-{2,}/g, '---');
+        // Normalize spacing around pipes
+        normalized = normalized.replace(/\s*\|\s*/g, ' | ');
+        normalized = normalized.trim();
+    }
+
+    // 7. Normalize multiple spaces to single spaces (except indentation)
+    const indent = normalized.match(/^(\s*)/)?.[0] || '';
+    const rest = normalized.slice(indent.length).replace(/  +/g, ' ');
+    normalized = indent + rest;
+
+    // 7. Normalize trailing whitespace
     normalized = normalized.trimEnd();
 
     return normalized;

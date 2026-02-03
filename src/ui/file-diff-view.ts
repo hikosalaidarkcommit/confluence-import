@@ -140,7 +140,7 @@ export interface FileDiffViewOptions {
     container: HTMLElement;
     localContent: string;
     remoteContent: string;
-    onResolve: (resolvedContent: string) => void;
+    onResolve: (resolvedContent: string) => Promise<void>;
     onCancel?: () => void;
 }
 
@@ -152,7 +152,7 @@ export class FileDiffView {
     private localLines: string[];
     private remoteLines: string[];
     private container: HTMLElement;
-    private onResolve: (resolvedContent: string) => void;
+    private onResolve: (resolvedContent: string) => Promise<void>;
     private onCancel?: () => void;
 
     // Track resolved state: maps difference index to chosen resolution
@@ -190,9 +190,18 @@ export class FileDiffView {
         };
 
         const mergeBtn = footer.createEl('button', { text: 'Merge & Push', cls: 'mod-cta' });
-        mergeBtn.onclick = () => {
-            const resolved = this.buildResolvedContent();
-            this.onResolve(resolved);
+        mergeBtn.onclick = async () => {
+            try {
+                mergeBtn.disabled = true;
+                mergeBtn.textContent = 'Uploading...';
+                const resolved = this.buildResolvedContent();
+                await this.onResolve(resolved);
+            } catch (error) {
+                console.error('Error during merge/push:', error);
+                mergeBtn.disabled = false;
+                mergeBtn.textContent = 'Merge & Push';
+                // The error should already be handled by the sync-service's handleError
+            }
         };
     }
 

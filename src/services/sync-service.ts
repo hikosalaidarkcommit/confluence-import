@@ -66,7 +66,7 @@ export class ConfluenceSyncService {
 
             // Step 5: Perform diff
             new Notice('🔄 Checking for conflicts...');
-            const diffEngine = new DiffEngine();
+            const diffEngine = new DiffEngine(this.logger);
             // remotePage.body.storage.value is XHTML.
             const diffResult = await diffEngine.compare(
                 localBody,
@@ -84,24 +84,32 @@ export class ConfluenceSyncService {
                     this.logger.info('Showing conflict resolution or reviewing changes');
                     // Show conflict resolution modal
                     await this.showConflictResolution(diffResult, async (merged) => {
-                        this.logger.info('Conflict resolved/Reviewed, uploading content');
-                        const newVersion = await this.uploadContent(
-                            apiClient,
-                            pageInfo.pageId,
-                            remotePage.title,
-                            merged,
-                            remotePage.version.number
-                        );
+                        try {
+                            this.logger.info('Conflict resolved/Reviewed. Saving validation to local file first.');
 
-                        // Update local file with merged content
-                        // Reconstruct file with original frontmatter + merged body
-                        const fullContent = frontmatter ? frontmatter + '\n' + merged : merged;
-                        await this.app.vault.modify(file, fullContent);
+                            // 1. Update local file with merged content immediately to prevent data loss or "forgot merge" state
+                            const fullContent = frontmatter ? frontmatter + '\n' + merged : merged;
+                            await this.app.vault.modify(file, fullContent);
+                            new Notice('💾 Local file updated with merged content.');
 
-                        // Update version in frontmatter
-                        await this.updateVersionInFrontmatter(file, newVersion);
+                            // 2. Upload merged content to Confluence
+                            this.logger.info('Uploading merged content to Confluence');
+                            const newVersion = await this.uploadContent(
+                                apiClient,
+                                pageInfo.pageId,
+                                remotePage.title,
+                                merged,
+                                remotePage.version.number
+                            );
 
-                        this.logger.info('Updated local file with merged content and new version');
+                            // 3. Update version in frontmatter only after successful upload
+                            await this.updateVersionInFrontmatter(file, newVersion);
+
+                            this.logger.info('Sync complete: Local file and Confluence updated.');
+                        } catch (error) {
+                            this.logger.error('Error during merge/upload callback', error);
+                            this.handleError(error);
+                        }
                     });
                 }
             } else {
@@ -123,9 +131,11 @@ export class ConfluenceSyncService {
         markdown: string,
         currentVersion: number
     ): Promise<number> {
+        this.logger.info('uploadContent started', { pageId, title, markdownLength: markdown.length, currentVersion });
 
         // Convert markdown to Confluence storage format
         new Notice('📝 Converting content...');
+        this.logger.info('Converting markdown to Confluence storage format...');
         const converter = new MarkdownToConfluenceConverter(
             // @ts-ignore - access inner generic adapter?
             this.app.vault.adapter.basePath || (this.app.vault.adapter as any).basePath || '.',
@@ -133,15 +143,18 @@ export class ConfluenceSyncService {
             async (path) => await this.app.vault.adapter.readBinary(path)
         );
         const storageFormat = await converter.convert(markdown, pageId);
+        this.logger.info('Conversion complete', { storageFormatLength: storageFormat.length, storageFormatPreview: storageFormat.substring(0, 500) });
 
         // Upload to Confluence
         new Notice('⬆ Uploading to Confluence...');
+        this.logger.info('Calling Confluence API to update page...', { pageId, newVersion: currentVersion + 1 });
         const updatedPage = await apiClient.updatePage(
             pageId,
             title,
             storageFormat,
             currentVersion
         );
+        this.logger.info('Upload successful', { newVersion: updatedPage.version.number });
 
         new Notice('✅ Successfully pushed to Confluence!', 5000);
         return updatedPage.version.number;
