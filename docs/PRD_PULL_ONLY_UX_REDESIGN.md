@@ -1,6 +1,6 @@
 # PRD：Pull-Only 單向同步 UX 全面重設計
 
-**產品**：Obsidian Confluence Sync Plugin  
+**產品**：Confluence Import（Obsidian Plugin，原名 Confluence Sync）  
 **文件版本**：1.1  
 **撰寫日期**：2026-07-21  
 **狀態**：**方案 B 核心已實作**（2026-07-21）；進階項目仍為 future work  

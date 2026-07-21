@@ -1,4 +1,4 @@
-# Obsidian Confluence Sync Plugin
+# Confluence Import (Obsidian Plugin)
 
 A plugin that pulls Confluence page content into your Obsidian notes, with
 difference detection and local conflict resolution.
@@ -11,7 +11,7 @@ difference detection and local conflict resolution.
 
 ## Features
 
-- **Manual Sync from Confluence**: Right-click any markdown note to pull the
+- **Manual Import from Confluence**: Right-click any markdown note to pull the
   linked Confluence page into it. Sync is always user-triggered — the plugin
   never syncs automatically in the background.
 - **One-way pull (read-only for Confluence)**: A sync fetches the remote page,
@@ -51,13 +51,13 @@ difference detection and local conflict resolution.
 ### From Community Plugins
 1. Open Obsidian Settings > Community Plugins
 2. Turn off "Restricted mode"
-3. Click "Browse" and search for "Confluence Sync"
+3. Click "Browse" and search for "Confluence Import"
 4. Click Install and then Enable
 
 ### Manual Installation
-1. Get the release archive `obsidian-confluence-sync-1.0.8.zip` (or the three
+1. Get the release archive `confluence-import-1.0.8.zip` (or the three
    files `main.js`, `manifest.json`, `styles.css`).
-2. Create a folder `obsidian-confluence-sync` in your vault's `.obsidian/plugins/` directory.
+2. Create a folder `confluence-import` in your vault's `.obsidian/plugins/` directory.
 3. Extract/put the three files flat in that folder.
 4. Reload Obsidian and enable the plugin.
 
@@ -69,7 +69,7 @@ difference detection and local conflict resolution.
    - Create a token and copy it.
 
 2. **Configure Plugin**:
-   - Open Obsidian Settings -> Confluence Sync.
+   - Open Obsidian Settings -> Confluence Import.
    - Enter your **Confluence Base URL** (required — credentials are only sent
      to this exact protocol + host, e.g. `https://mycompany.atlassian.net`;
      `http` downgrades are blocked).
@@ -98,10 +98,10 @@ difference detection and local conflict resolution.
    ---
    ```
 
-2. **Sync from Confluence** (manual, user-triggered):
+2. **Import from Confluence** (manual, user-triggered):
    - Right-click the note in the File Explorer or Editor.
-   - Select **Sync from Confluence**.
-   - Or use the Command Palette: `Confluence Sync: Sync current note from Confluence`.
+   - Select **Import from Confluence**.
+   - Or use the Command Palette: `Confluence Import: Import current note from Confluence`.
    - Or click the sync ribbon icon.
 
    > Note: syncing only happens when you trigger it. There is no automatic or
@@ -203,6 +203,6 @@ npm run package    # local release package: test + build + staged zip under rele
 npm run verify:release   # verify the packaged zip (whitelist, hashes, manifest)
 ```
 
-`npm run package` produces `release/obsidian-confluence-sync-<version>.zip`
+`npm run package` produces `release/confluence-import-<version>.zip`
 containing exactly three files (`main.js`, `manifest.json`, `styles.css`) for
 manual installation. See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for details.

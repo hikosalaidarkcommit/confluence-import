@@ -1,9 +1,9 @@
 {
-	"id": "obsidian-confluence-sync",
-	"name": "Confluence Sync",
-	"version": "1.0.8",
+  "id": "confluence-import",
+  "name": "Confluence Import",
+  "version": "1.0.8",
   "minAppVersion": "1.4.4",
-  "description": "Pull Confluence pages into Obsidian notes (one-way sync) with difference detection and local conflict resolution.",
+  "description": "Import Confluence pages into Obsidian notes (one-way pull) with a read-only diff preview before anything is written.",
   "author": "hikosalaidarkcommit",
   "authorUrl": "https://github.com/hikosalaidarkcommit",
   "isDesktopOnly": true

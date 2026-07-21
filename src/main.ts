@@ -44,22 +44,19 @@ export default class ConfluenceSyncPlugin extends Plugin implements ConfluenceSy
         this.addSettingTab(new ConfluenceSettingsTab(this.app, this));
 
         // Add ribbon icon
-        this.addRibbonIcon('cloud-download', 'Sync from Confluence', async () => {
+        this.addRibbonIcon('cloud-download', 'Import from Confluence', async () => {
             const activeFile = this.app.workspace.getActiveFile();
             if (activeFile) {
                 await this.syncService.syncFromConfluence(activeFile);
             } else {
-                new Notice('No active file to sync');
+                new Notice('No active file to import into');
             }
         });
 
-        // Add command
-        // NOTE: The command id is kept as 'push-to-confluence' (invisible to users)
-        // only so existing hotkey mappings keep working. The behavior is now a
-        // one-way PULL from Confluence into the local note.
+        // Add command — one-way PULL from Confluence into the local note.
         this.addCommand({
-            id: 'push-to-confluence',
-            name: 'Sync current note from Confluence',
+            id: 'import-from-confluence',
+            name: 'Import current note from Confluence',
             checkCallback: (checking: boolean) => {
                 const activeFile = this.app.workspace.getActiveFile();
 
@@ -80,7 +77,7 @@ export default class ConfluenceSyncPlugin extends Plugin implements ConfluenceSy
                 if (file instanceof TFile && file.extension === 'md') {
                     menu.addItem((item) => {
                         item
-                            .setTitle('Sync from Confluence')
+                            .setTitle('Import from Confluence')
                             .setIcon('cloud-download')
                             .onClick(async () => {
                                 await this.syncService.syncFromConfluence(file);
@@ -98,7 +95,7 @@ export default class ConfluenceSyncPlugin extends Plugin implements ConfluenceSy
                 if (mdFile instanceof TFile) {
                     menu.addItem((item) => {
                         item
-                            .setTitle('Sync from Confluence')
+                            .setTitle('Import from Confluence')
                             .setIcon('cloud-download')
                             .onClick(async () => {
                                 await this.syncService.syncFromConfluence(mdFile);

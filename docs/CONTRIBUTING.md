@@ -1,4 +1,4 @@
-# Contributing to Confluence Sync
+# Contributing to Confluence Import
 
 ## Development Setup
 
@@ -54,7 +54,7 @@ npm run package          # runs tests + build, stages and zips release files
 npm run verify:release   # independent verification of the produced zip
 ```
 
-The zip is written to `release/obsidian-confluence-sync-<version>.zip` and
+The zip is written to `release/confluence-import-<version>.zip` and
 contains exactly `main.js`, `manifest.json`, `styles.css` (flat, suitable for
 manual installation).
 

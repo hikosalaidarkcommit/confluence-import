@@ -1,43 +1,43 @@
 {
-    "name": "obsidian-confluence-sync",
-    "version": "1.0.8",
-    "description": "Pull Confluence pages into Obsidian notes (one-way sync) with difference detection and local conflict resolution.",
-    "main": "main.js",
-    "scripts": {
-        "dev": "node esbuild.config.mjs",
-        "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
-        "test": "jest",
-        "test:memory": "node scripts/test-memory.mjs",
-        "package": "node scripts/package-release.mjs",
+  "name": "confluence-import",
+  "version": "1.0.8",
+  "description": "Import Confluence pages into Obsidian notes (one-way pull) with a read-only diff preview before anything is written.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "test": "jest",
+    "test:memory": "node scripts/test-memory.mjs",
+    "package": "node scripts/package-release.mjs",
     "verify:release": "node scripts/verify-release.mjs",
     "sbom": "node scripts/generate-sbom.mjs",
     "version": "node version-bump.mjs && git add manifest.json versions.json"
-    },
-    "keywords": [],
+  },
+  "keywords": [],
   "author": "hikosalaidarkcommit",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/hikosalaidarkcommit/obsidian-sync-confluence.git"
   },
-    "devDependencies": {
-        "@types/jest": "^30.0.0",
-        "@types/node": "^16.11.6",
-        "@typescript-eslint/eslint-plugin": "5.29.0",
-        "@typescript-eslint/parser": "5.29.0",
-        "builtin-modules": "3.3.0",
-        "esbuild": "0.28.1",
-        "jest": "^30.2.0",
-        "jest-environment-jsdom": "^30.4.1",
-        "obsidian": "latest",
-        "ts-jest": "^29.4.6",
-        "tslib": "2.4.0",
-        "typescript": "4.7.4"
-    },
-    "dependencies": {
-        "@types/diff": "^7.0.2",
-        "diff": "^8.0.3",
-        "turndown": "^7.1.1",
-        "turndown-plugin-gfm": "^1.0.2"
-    }
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^16.11.6",
+    "@typescript-eslint/eslint-plugin": "5.29.0",
+    "@typescript-eslint/parser": "5.29.0",
+    "builtin-modules": "3.3.0",
+    "esbuild": "0.28.1",
+    "jest": "^30.2.0",
+    "jest-environment-jsdom": "^30.4.1",
+    "obsidian": "latest",
+    "ts-jest": "^29.4.6",
+    "tslib": "2.4.0",
+    "typescript": "4.7.4"
+  },
+  "dependencies": {
+    "@types/diff": "^7.0.2",
+    "diff": "^8.0.3",
+    "turndown": "^7.1.1",
+    "turndown-plugin-gfm": "^1.0.2"
+  }
 }

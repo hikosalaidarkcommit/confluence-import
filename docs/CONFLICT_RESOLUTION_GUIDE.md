@@ -2,14 +2,14 @@
 
 **Document Version**: 4.0
 **Last Updated**: 2026-07-21
-**Applies To**: Obsidian Confluence Sync Plugin (pull-only, read-only preview)
+**Applies To**: Confluence Import — Obsidian Plugin (pull-only, read-only preview)
 
 ---
 
 ## Overview
 
 **Sync is one-way: Confluence → Obsidian, and Confluence is the source of
-truth.** When you trigger **Sync from Confluence** (always manual — the
+truth.** When you trigger **Import from Confluence** (always manual — the
 plugin never syncs in the background), the plugin fetches the remote page and
 compares it with your local note. If they differ, a **read-only Diff
 Preview** opens so you can see exactly what would change **before anything is
@@ -40,7 +40,7 @@ Whenever the fetched Confluence content differs from your local note body:
 ```
 1. You edit your note locally: "Project deadline: Friday"
 2. The Confluence page says:   "Project deadline: Monday"
-3. You trigger Sync from Confluence → Diff Preview opens
+3. You trigger Import from Confluence → Diff Preview opens
 ```
 
 If the contents are identical, no preview appears — you see "Content is

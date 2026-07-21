@@ -145,7 +145,7 @@ export class PluginLogger {
             .catch((err) => {
                 if (!this.writeFailureReported) {
                     this.writeFailureReported = true;
-                    console.error('[Confluence Sync] Failed to write to debug log', err);
+                    console.error('[Confluence Import] Failed to write to debug log', err);
                 }
             });
     }

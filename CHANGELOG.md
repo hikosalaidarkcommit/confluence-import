@@ -3,6 +3,10 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
+### Changed (plugin identity — BREAKING for pre-release installs)
+- Plugin rebranded for Obsidian Community Plugin submission: id `obsidian-confluence-sync` → **`confluence-import`** (new ids may not contain "obsidian"; `confluence-sync` is already taken), name `Confluence Sync` → **`Confluence Import`**. Manifest description rewritten action-first. Package name and release artifact renamed accordingly (`confluence-import-1.0.8.zip`); installation folder is now `.obsidian/plugins/confluence-import`.
+- Command id `push-to-confluence` (a legacy compatibility string) replaced by **`import-from-confluence`** with display name "Import current note from Confluence". Since the plugin has never been published under the new identity, no hotkey migration is needed; users of pre-release builds must rebind hotkeys once.
+- All UI surfaces (ribbon, context menus, settings heading, notices, logger tag) now use Import terminology. Behavior is unchanged: strict one-way pull, read-only preview, no remote writes.
 ### Changed (repository metadata)
 - Repository metadata migrated to the new canonical location `hikosalaidarkcommit/obsidian-sync-confluence`: `package.json` author/repository, `manifest.json` author/authorUrl, SECURITY.md advisory link, and all active documentation links (README, CONTRIBUTING, MIGRATION_GUIDE) now point to the new repository. Historical references to the legacy repository name in past changelog entries are retained as plain text. (Metadata/documentation change only — no code, version, or publish action.)
 ### Added (supply chain & release integrity)
@@ -24,7 +28,7 @@ All notable changes to this project will be documented in this file.
 - External-change protection: if the note is modified while the preview dialog is open, Apply is aborted with a clear notice, nothing is overwritten, and the dialog stays open for retry.
 - Typed Confluence error handling with specific notices for 401/403/404/429, network failures, and invalid/unexpected API response shapes; none of these paths modify the local file.
 - Page ID cache toggle is now functional: when enabled, resolved page IDs are cached for 1 hour and persist across syncs; when disabled, a fresh resolver is used.
-- Standalone verification and packaging tooling: `npm run test:memory` (large-page memory check in a cold child process), `npm run package` (local staged zip build), and `npm run verify:release` (whitelist/hash/manifest checks). Local artifact: `release/obsidian-confluence-sync-1.0.8.zip` containing exactly `main.js`, `manifest.json`, `styles.css`.
+- Standalone verification and packaging tooling: `npm run test:memory` (large-page memory check in a cold child process), `npm run package` (local staged zip build), and `npm run verify:release` (whitelist/hash/manifest checks). Local artifact: `release/confluence-import-1.0.8.zip` (named `obsidian-confluence-sync-1.0.8.zip` before the identity rebrand) containing exactly `main.js`, `manifest.json`, `styles.css`.
 ### Changed
 - Minimum Obsidian version raised to 1.4.4 (`FileManager.processFrontMatter` requirement); `versions.json` mappings corrected accordingly. The plugin is desktop-only.
 - Large-page memory usage significantly reduced: the diff engine no longer eagerly allocates per-line diff objects during comparison (difference blocks are computed lazily by the conflict window only when it opens), and the DOM pre-processing stage now releases its full-page DOM before Markdown conversion runs. On a ~3.8MB synthetic page, peak process memory dropped by roughly half in profiling.
@@ -43,7 +47,7 @@ All notable changes to this project will be documented in this file.
 - The `diff-match-patch` dependency (and its type package), no longer imported anywhere after the unused eager diff pass was removed from the diff engine.
 - Unused legacy conflict-marker modules (`src/conflict/`) and the unused conflict confirmation modal.
 - Flaky in-Jest memory threshold test (replaced by the standalone `npm run test:memory` child-process check) and stray root-level memory verification drafts.
-- Outdated local release archive `obsidian-auto-post-confluence.zip` (predated the pull-only contract), replaced by `obsidian-confluence-sync-1.0.8.zip`.
+- Outdated local release archive `obsidian-auto-post-confluence.zip` (predated the pull-only contract), replaced by the current release artifact (now `confluence-import-1.0.8.zip` after the identity rebrand).
 ### Security
 - Credentialed requests are only sent to the exact protocol + host of the configured Base URL; notes whose `confluence-url` points to another host, or downgrades `https` to `http`, are blocked before any client is constructed.
 - Host guard now also fails closed on URLs with embedded credentials (`user:pass@host`) and on any non-http(s) scheme (`file:`, `javascript:`, custom schemes) — for both the note URL and the configured Base URL.
@@ -54,7 +58,7 @@ All notable changes to this project will be documented in this file.
 - Added `SECURITY.md` (private reporting via GitHub Security Advisories, plaintext `data.json` token storage disclosure, redirect/server-trust caveat) and MIT `LICENSE`; manifest/package author metadata filled in; `.gitignore` now excludes `data.json`, logs, `.env`, and key files.
 - Debug logs never contain note bodies, page content (raw/converted/normalized), tokens, emails, auth headers, or URL query strings; sensitive fields are redacted and content fields are replaced by length placeholders before hitting disk.
 ### Notes
-- No change to the pull-only contract: the plugin has no remote mutation capability. The legacy command id `push-to-confluence` is retained (invisible) so existing hotkey mappings keep working; its behavior is the one-way pull sync.
+- No change to the pull-only contract: the plugin has no remote mutation capability. (Historical note: an invisible legacy command id `push-to-confluence` was temporarily retained for hotkey compatibility during the rename; it has since been replaced by `import-from-confluence` as part of the identity rebrand above.)
 - Planned but NOT implemented (see `docs/PRD_PULL_ONLY_UX_REDESIGN.md`): pre-pull Undo/backup, `confluence-content-hash`-based local-edit detection, and the differentiated "Pull & Overwrite" label. The current build always uses "Pull & Replace".
 - Test suite: 7 Jest suites / 147 tests, plus the standalone memory check.
 
