@@ -4,14 +4,18 @@ import { FileDiffView } from './file-diff-view';
 
 export class ConflictResolutionModal extends Modal {
     private diffResult: DiffResult;
+    private onSettled?: () => void;
 
     constructor(
         app: App,
         diffResult: DiffResult,
-        private onResolve: (merged: string) => Promise<void>
+        /** Called when the user confirms the pull (no content param — remote is always used). */
+        private onAccept: () => Promise<void>,
+        onSettled?: () => void
     ) {
         super(app);
         this.diffResult = diffResult;
+        this.onSettled = onSettled;
     }
 
     onOpen() {
@@ -21,20 +25,29 @@ export class ConflictResolutionModal extends Modal {
     onClose() {
         const { contentEl } = this;
         contentEl.empty();
+        // Notify the service that the modal lifecycle is over
+        // (applied successfully OR cancelled/dismissed).
+        if (this.onSettled) {
+            const cb = this.onSettled;
+            this.onSettled = undefined;
+            cb();
+        }
     }
 
     private render() {
         const { contentEl } = this;
         contentEl.empty();
 
-        contentEl.createEl('h2', { text: 'Confluence Sync - Conflicts Detected' });
+        contentEl.createEl('h2', { text: 'Confluence has differences from your local note' });
 
-        // Header with instructions
+        // Explain exactly what will happen so the user can make an informed choice.
         contentEl.createEl('p', {
-            text: 'Review differences between your local file and Confluence. Click the action buttons to resolve each difference.'
+            text: 'The preview below shows what changed. ' +
+                '"Pull & Replace" will overwrite your local note body with the Confluence version shown in blue. ' +
+                'Your local edits shown in green will be lost. Confluence is never modified by this plugin.',
         });
 
-        // Container for the diff view
+        // Container for the diff view — scrollable, keyboard-accessible
         const container = contentEl.createDiv({ cls: 'full-file-editor-container' });
         container.style.maxHeight = '500px';
         container.style.overflow = 'auto';
@@ -42,23 +55,21 @@ export class ConflictResolutionModal extends Modal {
         container.style.borderRadius = '4px';
         container.style.marginBottom = '16px';
 
-        // Create the FileDiffView
         const diffView = new FileDiffView({
-            container: container,
+            container,
             localContent: this.diffResult.localContent,
             remoteContent: this.diffResult.remoteContent,
-            onResolve: async (resolvedContent: string) => {
+            onAccept: async () => {
                 try {
-                    await this.onResolve(resolvedContent);
-                    this.close();  // Only close if successful
+                    await this.onAccept();
+                    this.close(); // Only close if successful
                 } catch (error) {
-                    // Error is handled by sync-service, but don't close the modal
-                    // so user can retry or cancel
+                    // Error is handled by sync-service; modal stays open for retry or cancel.
                 }
             },
             onCancel: () => {
                 this.close();
-            }
+            },
         });
         diffView.render();
     }

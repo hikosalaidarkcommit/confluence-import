@@ -2,9 +2,9 @@
 	"id": "obsidian-confluence-sync",
 	"name": "Confluence Sync",
 	"version": "1.0.8",
-	"minAppVersion": "0.15.0",
-	"description": "Sync Obsidian notes to Confluence with conflict detection and resolution.",
-	"author": "",
-	"authorUrl": "",
-	"isDesktopOnly": false
+  "minAppVersion": "1.4.4",
+  "description": "Pull Confluence pages into Obsidian notes (one-way sync) with difference detection and local conflict resolution.",
+  "author": "hikosalaidarkcommit",
+  "authorUrl": "https://github.com/hikosalaidarkcommit",
+  "isDesktopOnly": true
 }

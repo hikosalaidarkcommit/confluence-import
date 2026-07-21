@@ -22,28 +22,22 @@ export interface NoteConfluenceMetadata {
     // confluenceBaseUrl?: string; // If using direct ID
 }
 
-export interface DiffLine {
-    lineNumber: number;
-    content: string;
-    type: 'unchanged' | 'added' | 'removed' | 'modified';
-}
-
-export interface ConflictBlock {
-    startLine: number;
-    endLine: number;
-    localLines: DiffLine[];
-    remoteLines: DiffLine[];
-    resolution?: 'local' | 'remote' | 'both' | 'manual';
-    manualContent?: string;
-}
-
 export interface DiffResult {
+    /**
+     * True when local and remote differ after normalization.
+     * Always equal to `!isIdentical`; kept for readability at call sites.
+     * Detailed difference blocks are computed lazily by the conflict modal
+     * (FileDiffView/computeFileDiff) — NOT here — so comparing large pages
+     * does not allocate per-line diff objects up front.
+     */
     hasConflicts: boolean;
-    conflicts: ConflictBlock[];
+    /** True when local and remote are equivalent after normalization. */
+    isIdentical: boolean;
     remoteVersion: number;
+    /** ORIGINAL (un-normalized) remote markdown — safe to write to disk. */
     remoteContent: string;
+    /** ORIGINAL (un-normalized) local markdown — safe to write to disk. */
     localContent: string;
-    diffLines: DiffLine[];
 }
 
 export interface ParsedConfluenceUrl {

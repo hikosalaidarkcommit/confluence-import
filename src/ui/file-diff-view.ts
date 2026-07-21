@@ -49,16 +49,17 @@ export function computeFileDiff(localContent: string, remoteContent: string): Fi
 
     const differences: DifferenceBlock[] = [];
 
-    // Track mapping between normalized line numbers and original line numbers
-    const normalizedLocalLines = normalizedLocal.split('\n');
-    const normalizedRemoteLines = normalizedRemote.split('\n');
-
     patch.hunks.forEach(hunk => {
         let localCount = 0;
         let remoteCount = 0;
 
-        for (let i = 0; i < hunk.lines.length; i++) {
-            const line = hunk.lines[i];
+        // structuredPatch emits "\ No newline at end of file" marker lines;
+        // they are metadata, not content, and break contiguous-block
+        // detection and line-index math if left in.
+        const hunkLines = hunk.lines.filter(l => !l.startsWith('\\'));
+
+        for (let i = 0; i < hunkLines.length; i++) {
+            const line = hunkLines[i];
 
             if (line.startsWith('+') || line.startsWith('-')) {
                 const start = i;
@@ -66,8 +67,8 @@ export function computeFileDiff(localContent: string, remoteContent: string): Fi
                 // Find end of contiguous changed lines
                 let end = start;
                 while (
-                    end < hunk.lines.length - 1 &&
-                    (hunk.lines[end + 1].startsWith('+') || hunk.lines[end + 1].startsWith('-'))
+                    end < hunkLines.length - 1 &&
+                    (hunkLines[end + 1].startsWith('+') || hunkLines[end + 1].startsWith('-'))
                 ) {
                     end++;
                 }
@@ -77,11 +78,11 @@ export function computeFileDiff(localContent: string, remoteContent: string): Fi
                 const remoteStartIdx = hunk.newStart + start - localCount - 1;
 
                 // Count lines being changed
-                const localChangeCount = hunk.lines
+                const localChangeCount = hunkLines
                     .slice(start, end + 1)
                     .filter(l => l.startsWith('-'))
                     .length;
-                const remoteChangeCount = hunk.lines
+                const remoteChangeCount = hunkLines
                     .slice(start, end + 1)
                     .filter(l => l.startsWith('+'))
                     .length;
@@ -140,30 +141,29 @@ export interface FileDiffViewOptions {
     container: HTMLElement;
     localContent: string;
     remoteContent: string;
-    onResolve: (resolvedContent: string) => Promise<void>;
+    /** Called when the user confirms the pull. No content parameter — the
+     *  caller always uses the raw remoteContent passed at construction. */
+    onAccept: () => Promise<void>;
     onCancel?: () => void;
 }
 
 /**
- * Renders a file diff view with action buttons for each difference block.
+ * Read-only diff preview. Shows what Confluence has vs what is local.
+ * The user can only Accept (pull the entire remote version) or Cancel.
+ * There is no per-block resolution — this is a strict pull-only UI.
  */
 export class FileDiffView {
     private fileDiff: FileDiff;
     private localLines: string[];
-    private remoteLines: string[];
     private container: HTMLElement;
-    private onResolve: (resolvedContent: string) => Promise<void>;
+    private onAccept: () => Promise<void>;
     private onCancel?: () => void;
-
-    // Track resolved state: maps difference index to chosen resolution
-    private resolutions: Map<number, 'local' | 'remote' | 'both'> = new Map();
 
     constructor(options: FileDiffViewOptions) {
         this.container = options.container;
         this.localLines = options.localContent.split('\n');
-        this.remoteLines = options.remoteContent.split('\n');
         this.fileDiff = computeFileDiff(options.localContent, options.remoteContent);
-        this.onResolve = options.onResolve;
+        this.onAccept = options.onAccept;
         this.onCancel = options.onCancel;
     }
 
@@ -173,34 +173,40 @@ export class FileDiffView {
 
         // Header
         const header = this.container.createDiv({ cls: 'file-diff__header' });
-        header.createEl('h3', { text: `${this.fileDiff.differences.length} difference(s) found` });
+        header.createEl('h3', {
+            text: `${this.fileDiff.differences.length} difference(s) between Confluence and your note`,
+        });
 
-        // Content area
+        // Read-only diff preview region — keyboard-scrollable for accessibility
         const content = this.container.createDiv({ cls: 'file-diff__content' });
+        content.setAttribute('role', 'region');
+        content.setAttribute('aria-label', 'Changes from Confluence');
+        content.setAttribute('tabindex', '0');
         this.buildLines(content);
 
-        // Footer with action buttons
+        // Footer: two CTAs — primary pull, secondary cancel
         const footer = this.container.createDiv({ cls: 'file-diff__footer modal-button-container' });
 
-        const cancelBtn = footer.createEl('button', { text: 'Cancel' });
+        const cancelBtn = footer.createEl('button', { text: 'Cancel (Keep Local)' });
+        cancelBtn.setAttribute('title', 'Do not apply. Your local note is unchanged and the version marker is not updated.');
         cancelBtn.onclick = () => {
             if (this.onCancel) {
                 this.onCancel();
             }
         };
 
-        const mergeBtn = footer.createEl('button', { text: 'Merge & Push', cls: 'mod-cta' });
-        mergeBtn.onclick = async () => {
+        const applyBtn = footer.createEl('button', { text: 'Pull & Replace', cls: 'mod-cta' });
+        applyBtn.setAttribute('title', 'Replace your local note body with the Confluence version shown above. Confluence is not modified.');
+        applyBtn.onclick = async () => {
             try {
-                mergeBtn.disabled = true;
-                mergeBtn.textContent = 'Uploading...';
-                const resolved = this.buildResolvedContent();
-                await this.onResolve(resolved);
+                applyBtn.disabled = true;
+                applyBtn.textContent = 'Pulling...';
+                await this.onAccept();
             } catch (error) {
-                console.error('Error during merge/push:', error);
-                mergeBtn.disabled = false;
-                mergeBtn.textContent = 'Merge & Push';
-                // The error should already be handled by the sync-service's handleError
+                console.error('Error during pull & replace:', error);
+                applyBtn.disabled = false;
+                applyBtn.textContent = 'Pull & Replace';
+                // Error is handled by sync-service; modal stays open for retry or cancel.
             }
         };
     }
@@ -208,7 +214,7 @@ export class FileDiffView {
     private buildLines(container: HTMLElement): void {
         let localIdx = 0;
         let remoteIdx = 0;
-        const maxIterations = this.localLines.length + this.remoteLines.length + 100; // Safety guard
+        const maxIterations = this.localLines.length + this.fileDiff.remoteLines.length + 100;
         let iterations = 0;
 
         // Sort differences by position to process them in order
@@ -217,7 +223,7 @@ export class FileDiffView {
         );
         let nextDiffIdx = 0;
 
-        while (localIdx < this.localLines.length || remoteIdx < this.remoteLines.length) {
+        while (localIdx < this.localLines.length || remoteIdx < this.fileDiff.remoteLines.length) {
             // Safety guard against infinite loops
             if (++iterations > maxIterations) {
                 console.error('buildLines: Max iterations reached, breaking loop');
@@ -231,13 +237,12 @@ export class FileDiffView {
                 currentDiff.remoteStart === remoteIdx;
 
             if (atDiff && currentDiff) {
-                this.buildDifferenceBlock(container, currentDiff, nextDiffIdx);
+                this.buildDifferenceBlock(container, currentDiff);
 
                 // Advance by the number of lines in the diff (at least 1 to prevent stuck)
                 const localAdvance = Math.max(currentDiff.localLines.length, 0);
                 const remoteAdvance = Math.max(currentDiff.remoteLines.length, 0);
 
-                // If both are 0, we still need to advance to avoid infinite loop
                 if (localAdvance === 0 && remoteAdvance === 0) {
                     localIdx++;
                     remoteIdx++;
@@ -248,7 +253,7 @@ export class FileDiffView {
 
                 nextDiffIdx++;
             } else {
-                // Unchanged line - take from local if available
+                // Unchanged line — show from local
                 if (localIdx < this.localLines.length) {
                     container.createDiv({
                         text: this.localLines[localIdx] || '\u00A0',
@@ -261,126 +266,21 @@ export class FileDiffView {
         }
     }
 
-    private buildDifferenceBlock(container: HTMLElement, diff: DifferenceBlock, diffIndex: number): void {
+    private buildDifferenceBlock(container: HTMLElement, diff: DifferenceBlock): void {
         const block = container.createDiv({ cls: 'file-diff__difference' });
 
-        // Action buttons
-        const actions = block.createDiv({ cls: 'file-diff__actions conflict-actions-inline' });
-
-        const label = actions.createSpan({ text: 'Resolve: ', cls: 'conflict-indicator' });
-
-        const btnLocal = actions.createEl('button', { text: 'Accept Local', cls: 'conflict-action-btn' });
-        btnLocal.style.color = 'var(--color-green)';
-        btnLocal.onclick = () => {
-            this.resolutions.set(diffIndex, 'local');
-            this.highlightResolution(block, 'local');
-        };
-
-        actions.createSpan({ text: ' | ' });
-
-        const btnRemote = actions.createEl('button', { text: 'Accept Remote', cls: 'conflict-action-btn' });
-        btnRemote.style.color = 'var(--color-blue)';
-        btnRemote.onclick = () => {
-            this.resolutions.set(diffIndex, 'remote');
-            this.highlightResolution(block, 'remote');
-        };
-
-        actions.createSpan({ text: ' | ' });
-
-        const btnBoth = actions.createEl('button', { text: 'Accept Both', cls: 'conflict-action-btn' });
-        btnBoth.onclick = () => {
-            this.resolutions.set(diffIndex, 'both');
-            this.highlightResolution(block, 'both');
-        };
-
-        // Local (top) lines - green background
+        // Local (being replaced) lines — red-tinted to show what will be removed
         for (let i = 0; i < diff.localLines.length; i++) {
             const lineDiv = block.createDiv({ cls: 'file-diff__line conflict-region-current' });
             const diffSpan = buildDiffLine(diff.localLines[i], diff.remoteLines[i], 'file-diff__char-highlight-local');
             lineDiv.appendChild(diffSpan);
         }
 
-        // Remote (bottom) lines - blue background
+        // Remote (incoming) lines — blue-tinted to show what Confluence has
         for (let i = 0; i < diff.remoteLines.length; i++) {
             const lineDiv = block.createDiv({ cls: 'file-diff__line conflict-region-incoming' });
             const diffSpan = buildDiffLine(diff.remoteLines[i], diff.localLines[i], 'file-diff__char-highlight-remote');
             lineDiv.appendChild(diffSpan);
         }
-    }
-
-    private highlightResolution(block: HTMLElement, resolution: 'local' | 'remote' | 'both'): void {
-        // Add visual feedback
-        block.querySelectorAll('.file-diff__line').forEach(el => {
-            el.removeClass('file-diff__resolved');
-        });
-
-        if (resolution === 'local') {
-            block.querySelectorAll('.conflict-region-current').forEach(el => el.addClass('file-diff__resolved'));
-        } else if (resolution === 'remote') {
-            block.querySelectorAll('.conflict-region-incoming').forEach(el => el.addClass('file-diff__resolved'));
-        } else {
-            block.querySelectorAll('.file-diff__line').forEach(el => el.addClass('file-diff__resolved'));
-        }
-    }
-
-    private buildResolvedContent(): string {
-        const resultLines: string[] = [];
-        let localIdx = 0;
-        let remoteIdx = 0;
-        const maxIterations = this.localLines.length + this.remoteLines.length + 100;
-        let iterations = 0;
-
-        // Sort differences by position
-        const sortedDiffs = [...this.fileDiff.differences].sort((a, b) =>
-            a.localStart - b.localStart || a.remoteStart - b.remoteStart
-        );
-        let nextDiffIdx = 0;
-
-        while (localIdx < this.localLines.length || remoteIdx < this.remoteLines.length) {
-            if (++iterations > maxIterations) {
-                console.error('buildResolvedContent: Max iterations reached');
-                break;
-            }
-
-            const currentDiff = sortedDiffs[nextDiffIdx];
-            const atDiff = currentDiff &&
-                currentDiff.localStart === localIdx &&
-                currentDiff.remoteStart === remoteIdx;
-
-            if (atDiff && currentDiff) {
-                const resolution = this.resolutions.get(nextDiffIdx) || 'local';
-
-                if (resolution === 'local') {
-                    resultLines.push(...currentDiff.localLines);
-                } else if (resolution === 'remote') {
-                    resultLines.push(...currentDiff.remoteLines);
-                } else { // both
-                    resultLines.push(...currentDiff.localLines);
-                    resultLines.push(...currentDiff.remoteLines);
-                }
-
-                const localAdvance = Math.max(currentDiff.localLines.length, 0);
-                const remoteAdvance = Math.max(currentDiff.remoteLines.length, 0);
-
-                if (localAdvance === 0 && remoteAdvance === 0) {
-                    localIdx++;
-                    remoteIdx++;
-                } else {
-                    localIdx += localAdvance;
-                    remoteIdx += remoteAdvance;
-                }
-
-                nextDiffIdx++;
-            } else {
-                // Unchanged line - take from local
-                if (localIdx < this.localLines.length) {
-                    resultLines.push(this.localLines[localIdx]);
-                }
-                localIdx++;
-                remoteIdx++;
-            }
-        }
-
-        return resultLines.join('\n');
     }
 }

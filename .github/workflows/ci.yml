@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+# Least privilege: read-only token for all jobs. No publish/release steps here.
+permissions:
+  contents: read
+
+jobs:
+  test-build-package:
+    name: Test, build, package & verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install (locked)
+        run: npm ci
+      - name: Audit production dependencies (gate)
+        run: npm audit --omit=dev
+      - name: Unit & integration tests
+        run: npm test
+      - name: Typecheck + production build
+        run: npm run build
+      - name: Package + release verification
+        run: npm run package
+      - name: SBOM generation (sanity)
+        run: npm run sbom
+
+  memory-gate:
+    # Separate job: peak-RSS thresholds were calibrated on a local macOS
+    # workstation and absolute memory numbers vary across runners/Node
+    # builds. Failure here should be investigated, but it must not mask
+    # the deterministic test/build/package gates above.
+    name: Large-page memory gate (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run test:memory

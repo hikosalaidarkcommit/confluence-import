@@ -1,5 +1,7 @@
 # Roadmap: Version Control & Pull Feature
 
+> **⚠ DEPRECATED — NOT CURRENT UX**: This is a historical design/implementation document. The per-block merge and push-era workflow it describes has been removed. The current UX is a read-only Diff Preview with "Pull & Replace" / "Cancel (Keep Local)" only — see [CONFLICT_RESOLUTION_GUIDE.md](CONFLICT_RESOLUTION_GUIDE.md) and [PRD_PULL_ONLY_UX_REDESIGN.md](PRD_PULL_ONLY_UX_REDESIGN.md). Kept for historical reference; content below is unmodified.
+
 **Product**: Obsidian Confluence Sync Plugin  
 **Feature**: Version Control & Bidirectional Sync  
 **Timeline**: Q1-Q2 2026 (12 weeks)  

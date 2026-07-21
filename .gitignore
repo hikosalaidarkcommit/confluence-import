@@ -3,3 +3,16 @@ node_modules
 /styles.css
 .obsidian
 release/
+.agent/
+
+# Sensitive / local-only files — never commit
+data.json
+*.log
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+secrets*.json

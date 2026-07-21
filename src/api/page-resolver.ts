@@ -2,7 +2,7 @@ import { ConfluenceApiClient } from './confluence-client';
 import { PageResolutionResult, ParsedConfluenceUrl } from '../models';
 
 export class ConfluencePageResolver {
-    constructor(private apiClient: ConfluenceApiClient) { }
+    constructor(protected apiClient: ConfluenceApiClient) { }
 
     /**
      * Resolve page ID from parsed URL
@@ -90,9 +90,10 @@ export class CachedPageResolver extends ConfluencePageResolver {
         const cacheKey = this.getCacheKey(parsedUrl);
         const cached = this.cache.get(cacheKey);
 
-        // Return cached if valid and not expired
+        // Return cached if valid and not expired.
+        // No console logging here: page IDs are user data and this path has
+        // no sanitized logger available — silence is the safe default.
         if (cached && (Date.now() - cached.timestamp) < this.CACHE_TTL) {
-            console.log('Using cached page ID:', cached.pageId);
             return {
                 pageId: cached.pageId,
                 version: cached.version,
@@ -114,6 +115,14 @@ export class CachedPageResolver extends ConfluencePageResolver {
         });
 
         return result;
+    }
+
+    /**
+     * Update the underlying API client (e.g. after credential changes) while
+     * keeping the existing cache entries intact.
+     */
+    updateApiClient(client: ConfluenceApiClient): void {
+        this.apiClient = client;
     }
 
     /**

@@ -1,5 +1,7 @@
 # Release Notes - v1.0.8
 
+> **⚠ DEPRECATED — NOT CURRENT UX**: This is a historical design/implementation document. The per-block merge and push-era workflow it describes has been removed. The current UX is a read-only Diff Preview with "Pull & Replace" / "Cancel (Keep Local)" only — see [CONFLICT_RESOLUTION_GUIDE.md](CONFLICT_RESOLUTION_GUIDE.md) and [PRD_PULL_ONLY_UX_REDESIGN.md](PRD_PULL_ONLY_UX_REDESIGN.md). Kept for historical reference; content below is unmodified.
+
 ## Data Integrity & Conflict Improvements
 
 This release ensures data safety during merges and further reduces false-positive conflicts.

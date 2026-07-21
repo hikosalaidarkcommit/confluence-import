@@ -8,6 +8,32 @@ export interface ConfluenceApiConfig {
   apiToken: string;
 }
 
+/**
+ * Encode a string to Base64 in a Unicode-safe way.
+ * `btoa` only handles Latin-1 (code points 0–255). When the email or API
+ * token contains multi-byte characters (e.g. Chinese, emoji) it throws
+ * "The string to be encoded contains characters outside of the Latin1 range".
+ * We percent-encode the UTF-8 bytes first, then decode the percent-encoding
+ * back to individual bytes that `btoa` can handle.
+ */
+/** A Confluence page version must be a finite positive integer. */
+function isValidVersionNumber(v: any): boolean {
+  return typeof v === 'number' && Number.isFinite(v) && Number.isInteger(v) && v > 0;
+}
+
+function toBase64(str: string): string {
+  try {
+    return btoa(unescape(encodeURIComponent(str)));
+  } catch {
+    // encodeURIComponent/unescape should never fail for valid JS strings,
+    // but guard against any future engine quirk.
+    throw new Error(
+      'Confluence credentials contain characters that cannot be encoded. ' +
+      'Please verify your email and API token in Settings.'
+    );
+  }
+}
+
 export class ConfluenceApiClient {
   private baseUrl: string;
   private authHeader: string;
@@ -19,8 +45,7 @@ export class ConfluenceApiClient {
     // Otherwise assume Server/Data Center (Bearer Auth)
     if (this.baseUrl.includes('atlassian.net')) {
       const credentials = `${config.email}:${config.apiToken}`;
-      // Base64 encode for Basic Auth
-      this.authHeader = `Basic ${btoa(credentials)}`;
+      this.authHeader = `Basic ${toBase64(credentials)}`;
     } else {
       // Use Bearer token for on-prem/PAT
       this.authHeader = `Bearer ${config.apiToken}`;
@@ -28,7 +53,9 @@ export class ConfluenceApiClient {
   }
 
   /**
-   * Get page content by ID
+   * Get page content by ID.
+   * Validates the response shape before returning so callers can safely
+   * access `body.storage.value` without defensive checks at every call site.
    */
   async getPage(pageId: string): Promise<PageContent> {
     const url = `${this.baseUrl}/rest/api/content/${pageId}?expand=body.storage,version,space`;
@@ -37,7 +64,54 @@ export class ConfluenceApiClient {
       method: 'GET'
     });
 
+    this.assertPageShape(response);
     return response;
+  }
+
+  /**
+   * Throws a descriptive error if the API response does not look like a
+   * valid PageContent object. Guards against truncated responses, unexpected
+   * API changes, or non-JSON bodies that requestUrl silently returns as null.
+   */
+  private assertPageShape(data: any): asserts data is PageContent {
+    if (
+      data == null ||
+      typeof data !== 'object' ||
+      typeof data.id !== 'string' ||
+      typeof data.title !== 'string' ||
+      typeof data.body?.storage?.value !== 'string' ||
+      !isValidVersionNumber(data.version?.number)
+    ) {
+      throw new ConfluenceApiError(
+        0,
+        'Invalid response',
+        'The Confluence API returned an unexpected response shape. ' +
+        'Expected a page object with id, title, body.storage.value, and a positive integer version.number.'
+      );
+    }
+  }
+
+  /**
+   * Validate the shape of a search result entry for the fields we actually
+   * consume (id, title, version.number, space.key). Body is not required
+   * because search callers use expand without body.
+   */
+  private assertSearchResultShape(entry: any): void {
+    if (
+      entry == null ||
+      typeof entry !== 'object' ||
+      typeof entry.id !== 'string' ||
+      typeof entry.title !== 'string' ||
+      !isValidVersionNumber(entry.version?.number) ||
+      typeof entry.space?.key !== 'string'
+    ) {
+      throw new ConfluenceApiError(
+        0,
+        'Invalid response',
+        'The Confluence search API returned a result entry with an unexpected shape. ' +
+        'Expected id, title, version.number (positive integer), and space.key.'
+      );
+    }
   }
 
   /**
@@ -58,103 +132,29 @@ export class ConfluenceApiClient {
 
     const url = `${this.baseUrl}/rest/api/content?${queryParams}`;
 
-    return await this.request(url, {
+    const response = await this.request(url, {
       method: 'GET'
     });
-  }
 
-  /**
-   * Update page content
-   */
-  async updatePage(
-    pageId: string,
-    title: string,
-    content: string,
-    version: number
-  ): Promise<PageContent> {
-
-    const url = `${this.baseUrl}/rest/api/content/${pageId}`;
-
-    const payload = {
-      version: {
-        number: version + 1
-      },
-      title: title,
-      type: 'page',
-      body: {
-        storage: {
-          value: content,
-          representation: 'storage'
-        }
-      }
-    };
-
-    return await this.request(url, {
-      method: 'PUT',
-      body: JSON.stringify(payload)
-    });
-  }
-
-  /**
-   * Upload attachment to page
-   */
-  async uploadAttachment(
-    pageId: string,
-    fileData: ArrayBuffer,
-    filename: string
-  ): Promise<{ filename: string; id: string }> {
-
-    const url = `${this.baseUrl}/rest/api/content/${pageId}/child/attachment`;
-
-    // Obsidian requestUrl doesn't support FormData directly nicely for multipart.
-    // However, we can construct the body manually.
-
-    const boundary = '----ObsidianConfluenceSyncBoundary' + Math.random().toString(36).substring(2);
-    const body = await this.createMultipartBody(fileData, filename, boundary);
-
-    const response = await this.request(url, {
-      method: 'POST',
-      body: body,
-      headers: {
-        'X-Atlassian-Token': 'no-check',
-        'Content-Type': `multipart/form-data; boundary=${boundary}`
-      }
-    }, true
-    );
-
-    if (response.results && response.results.length > 0) {
-      return {
-        filename: response.results[0].title,
-        id: response.results[0].id
-      };
+    // SECURITY/robustness: validate shape before callers touch fields.
+    // Raw response bodies are never included in the error.
+    if (response == null || typeof response !== 'object' || !Array.isArray(response.results)) {
+      throw new ConfluenceApiError(
+        0,
+        'Invalid response',
+        'The Confluence search API returned an unexpected response shape (missing results array).'
+      );
     }
-    throw new Error('Upload failed, no results returned');
+    for (const entry of response.results) {
+      this.assertSearchResultShape(entry);
+    }
+    return response;
   }
 
-  private async createMultipartBody(fileData: ArrayBuffer, filename: string, boundary: string): Promise<ArrayBuffer> {
-    // Helper to build multipart body
-    const crlf = '\r\n';
-    const type = 'application/octet-stream'; // Default
-
-    const encoder = new TextEncoder();
-
-    // We must handle the binary data concatenation correctly.
-    // Note: requestUrl body expectation: "string | ArrayBuffer"
-
-    const header = `--${boundary}${crlf}Content-Disposition: form-data; name="file"; filename="${filename}"${crlf}Content-Type: ${type}${crlf}${crlf}`;
-    const footer = `${crlf}--${boundary}${crlf}Content-Disposition: form-data; name="minorEdit"${crlf}${crlf}true${crlf}--${boundary}--${crlf}`;
-
-    const headerBytes = encoder.encode(header);
-    const footerBytes = encoder.encode(footer);
-    const fileBytes = new Uint8Array(fileData);
-
-    const combined = new Uint8Array(headerBytes.length + fileBytes.length + footerBytes.length);
-    combined.set(headerBytes);
-    combined.set(fileBytes, headerBytes.length);
-    combined.set(footerBytes, headerBytes.length + fileBytes.length);
-
-    return combined.buffer;
-  }
+  // NOTE: This client is intentionally READ-ONLY. The plugin's sync is
+  // strictly one-way (Confluence → Obsidian); the page-update and
+  // attachment-upload methods were removed on purpose. Do not re-add
+  // write endpoints without revisiting the pull-only contract and its tests.
 
   /**
    * Test connection
@@ -174,14 +174,14 @@ export class ConfluenceApiClient {
   /**
    * Make authenticated request using Obsidian requestUrl
    */
-  private async request(url: string, options: RequestInit, skipContentType = false): Promise<any> {
+  private async request(url: string, options: RequestInit): Promise<any> {
     const headers: Record<string, string> = {
       'Authorization': this.authHeader,
       'Accept': 'application/json',
       ...(options.headers as Record<string, string> || {})
     };
 
-    if (!skipContentType && !headers['Content-Type']) {
+    if (!headers['Content-Type']) {
       headers['Content-Type'] = 'application/json';
     }
 
@@ -199,10 +199,11 @@ export class ConfluenceApiClient {
     if (response.status < 200 || response.status >= 300) {
       // Confluence might return HTML error pages or JSON
       const errorBody = response.text;
-      console.error('API Error', response.status, errorBody);
+      const statusText =
+        response.status === 429 ? 'Rate limit exceeded' : 'API Error';
       throw new ConfluenceApiError(
         response.status,
-        'API Error',
+        statusText,
         errorBody
       );
     }

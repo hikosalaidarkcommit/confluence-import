@@ -1,5 +1,7 @@
 # Migration Guide: Version Control Feature
 
+> **⚠ DEPRECATED — NOT CURRENT UX**: This is a historical design/implementation document. The per-block merge and push-era workflow it describes has been removed. The current UX is a read-only Diff Preview with "Pull & Replace" / "Cancel (Keep Local)" only — see [CONFLICT_RESOLUTION_GUIDE.md](CONFLICT_RESOLUTION_GUIDE.md) and [PRD_PULL_ONLY_UX_REDESIGN.md](PRD_PULL_ONLY_UX_REDESIGN.md). Kept for historical reference; content below is unmodified.
+
 **From**: v1.0.0  
 **To**: v2.0.0-alpha.1  
 **Date**: 2026-01-12
@@ -178,8 +180,8 @@ If the plugin detects a version conflict (409 error from Confluence API):
 
 ## Getting Help
 
-- **Issues**: Report bugs on [GitHub Issues](https://github.com/yourusername/obsidian-confluence-sync/issues)
-- **Discussions**: Ask questions in [GitHub Discussions](https://github.com/yourusername/obsidian-confluence-sync/discussions)
+- **Issues**: Report bugs on [GitHub Issues](https://github.com/hikosalaidarkcommit/obsidian-sync-confluence/issues)
+- **Discussions**: Ask questions in [GitHub Discussions](https://github.com/hikosalaidarkcommit/obsidian-sync-confluence/discussions)
 - **Documentation**: See [README.md](../README.md) for full documentation
 
 ---

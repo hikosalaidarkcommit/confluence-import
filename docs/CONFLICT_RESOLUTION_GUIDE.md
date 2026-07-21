@@ -1,576 +1,183 @@
-# Conflict Resolution Behaviors Explained
+# Pull Preview Guide (Differences Between Your Note and Confluence)
 
-**Document Version**: 1.0  
-**Last Updated**: 2026-01-12  
-**Applies To**: Obsidian Confluence Sync Plugin v1.0.0+
+**Document Version**: 4.0
+**Last Updated**: 2026-07-21
+**Applies To**: Obsidian Confluence Sync Plugin (pull-only, read-only preview)
 
 ---
 
 ## Overview
 
-When you push a note to Confluence and the remote page has been modified, the plugin detects a **conflict** and presents you with resolution options. This document explains each behavior in detail.
+**Sync is one-way: Confluence → Obsidian, and Confluence is the source of
+truth.** When you trigger **Sync from Confluence** (always manual — the
+plugin never syncs in the background), the plugin fetches the remote page and
+compares it with your local note. If they differ, a **read-only Diff
+Preview** opens so you can see exactly what would change **before anything is
+written**.
+
+There is no merging. You have exactly two choices:
+
+| Button | What happens |
+|---|---|
+| **Pull & Replace** | Your local note body is replaced with the Confluence version in full |
+| **Cancel (Keep Local)** | Nothing is written — your note stays byte-for-byte as it is |
+
+The plugin never writes to Confluence — no page updates, no attachment
+uploads.
+
+> **⚠ Historical note**: Earlier versions offered per-difference resolution
+> options ("Accept Local", "Accept Remote", "Accept Both") and before that a
+> "Push to Confluence" action. Both have been removed. Per-block merging on a
+> pull-only plugin was misleading — keeping a "local" block never propagated
+> anywhere, so the same difference reappeared on every sync.
 
 ---
 
-## When Do Conflicts Occur?
+## When Does the Preview Appear?
 
-Conflicts happen when:
-1. **You have local changes** in your Obsidian note
-2. **Someone else has made changes** to the Confluence page
-3. **Both changes affect the same content**
+Whenever the fetched Confluence content differs from your local note body:
 
-**Example Scenario:**
 ```
-1. You edit your note: "Project deadline: Friday"
-2. Colleague edits Confluence: "Project deadline: Monday"
-3. You try to push → Conflict detected!
+1. You edit your note locally: "Project deadline: Friday"
+2. The Confluence page says:   "Project deadline: Monday"
+3. You trigger Sync from Confluence → Diff Preview opens
 ```
+
+If the contents are identical, no preview appears — you see "Content is
+identical" and only the `confluence-version` frontmatter is refreshed.
 
 ---
 
-## Resolution Options
+## How a Sync Works
 
-The plugin offers **6 resolution strategies**:
-
-### 1. **Keep Local** (Default)
-
-**What it does:**
-- Keeps YOUR changes from Obsidian
-- Discards the remote changes from Confluence
-- Pushes your version to Confluence (overwriting remote)
-
-**When to use:**
-- You know your changes are correct
-- The remote changes are outdated or incorrect
-- You want to overwrite what's on Confluence
-
-**Example:**
-```markdown
-Local (Yours):     "Project deadline: Friday"
-Remote (Theirs):   "Project deadline: Monday"
-Result:            "Project deadline: Friday"  ← Your version wins
-```
-
-**Code behavior:**
-```typescript
-// From conflict-modal.ts line 268
-if (resolution === 'local') return localPart;
-```
+1. **Fetch**: The plugin downloads the current Confluence page (read-only).
+2. **Compare**: It compares the remote content with your local note body.
+3. **Identical?** Nothing changes except the `confluence-version`
+   frontmatter, which is aligned to the fetched remote version.
+4. **Preview**: If there are differences, the read-only preview opens.
+   Local lines are shown in green, incoming Confluence lines in blue.
+5. **Your choice**:
+   - **Pull & Replace** → local note body becomes the Confluence version;
+     `confluence-version` is set to the fetched remote version; all other
+     frontmatter properties (tags, aliases, …) are preserved.
+   - **Cancel (Keep Local)** → zero writes; the version marker is NOT
+     updated, so the same differences will appear on your next sync.
+6. **Confluence is never modified** at any step.
 
 ---
 
-### 2. **Keep Remote**
-
-**What it does:**
-- Discards YOUR local changes
-- Accepts the remote changes from Confluence
-- Updates your Obsidian note with Confluence content
-
-**When to use:**
-- The remote changes are more up-to-date
-- You want to accept what's on Confluence
-- You made a mistake locally and want to revert
-
-**Example:**
-```markdown
-Local (Yours):     "Project deadline: Friday"
-Remote (Theirs):   "Project deadline: Monday"
-Result:            "Project deadline: Monday"  ← Remote version wins
-```
-
-**Code behavior:**
-```typescript
-// From conflict-modal.ts line 269
-if (resolution === 'remote') return remotePart;
-```
-
----
-
-### 3. **Keep Both (Local First)**
-
-**What it does:**
-- Combines BOTH your local changes AND remote changes
-- Appends remote content **after** local content
-- Creates a merged version with both sets of changes
-
-**When to use:**
-- Both changes are valuable and don't conflict
-- You want YOUR changes to appear first
-- You'll manually clean up the merged result later
-
-**Example:**
-```markdown
-Local (Yours):     "Project deadline: Friday"
-Remote (Theirs):   "Project deadline: Monday"
-Result:            "Project deadline: Friday
-                    Project deadline: Monday"  ← Local first, then remote
-```
-
-**Code behavior:**
-```typescript
-// From conflict-modal.ts line 267
-if (resolution === 'both') return localPart + '\n' + remotePart;  // Local first
-```
-
-**⚠️ Warning:** This can create duplicate or contradictory content. You may need to manually edit the result.
-
----
-
-### 4. **Keep Both (Remote First)** 🆕
-
-**What it does:**
-- Combines BOTH your local changes AND remote changes
-- Appends local content **after** remote content
-- Creates a merged version with remote changes prioritized
-
-**When to use:**
-- You want to preserve both versions but prioritize remote
-- Remote changes are more authoritative
-- You want to see remote version first for context
-
-**Example:**
-```markdown
-Local (Yours):     "Project deadline: Friday"
-Remote (Theirs):   "Project deadline: Monday"
-Result:            "Project deadline: Monday
-                    Project deadline: Friday"  ← Remote first, then local
-```
-
-**Code behavior:**
-```typescript
-// From conflict-modal.ts line 268
-if (resolution === 'both-remote-first') return remotePart + '\n' + localPart;  // Remote first
-```
-
-**💡 Tip:** This is useful when you want to see the "official" version first, followed by your alternative or notes.
-
----
-
-### 5. **Manual Edit**
-
-**What it does:**
-- Shows a text area where you can manually edit the content
-- Pre-fills with your local content by default
-- Gives you complete control over the final result
-
-**When to use:**
-- You want to cherry-pick parts from both versions
-- You need to write a completely new version
-- The conflict requires human judgment to resolve
-
-**Example:**
-```markdown
-Local (Yours):     "Project deadline: Friday"
-Remote (Theirs):   "Project deadline: Monday"
-Manual Edit:       "Project deadline: TBD (discuss with team)"  ← Custom resolution
-```
-
-**Code behavior:**
-```typescript
-// From conflict-modal.ts line 261-262
-if (resolution === 'manual') {
-    return this.manualContents.get(index) || '';
-}
-```
-
-**UI Behavior:**
-- A textarea appears below the resolution dropdown
-- You can type or paste your desired content
-- Changes are saved as you type
-
----
-
-### 6. **Skip (Resolve Later)** 🆕
-
-**What it does:**
-- Keeps your LOCAL content unchanged for this conflict
-- Defers resolution to later
-- Allows you to resolve other conflicts first
-- Useful when you have multiple conflicts and want to handle them separately
-
-**When to use:**
-- You're not ready to decide on this conflict yet
-- You want to resolve easier conflicts first
-- You need more information before deciding
-- You want to discuss with team before merging
-
-**Example:**
-```markdown
-Local (Yours):     "Project deadline: Friday"
-Remote (Theirs):   "Project deadline: Monday"
-Resolution: Skip   → Keeps "Friday" (your local version) for now
-```
-
-**Code behavior:**
-```typescript
-// From conflict-modal.ts
-if (resolution === 'skip') {
-    return lines.filter(l => l.type === 'added').map(l => l.content).join('\n');
-    // Keeps local content unchanged
-}
-```
-
-**💡 Important Notes:**
-- **Skip ≠ Cancel**: Skip keeps your local content; Cancel aborts the entire push
-- **Multiple conflicts**: You can skip some conflicts and resolve others
-- **Next push**: Skipped conflicts will appear again on your next push attempt
-- **Local preserved**: Your local changes remain safe and unchanged
-
-**Difference from Cancel:**
-
-| Action | Skip | Cancel |
-|--------|------|--------|
-| **What happens** | Keeps local content for this conflict | Aborts entire push operation |
-| **Other conflicts** | Still resolved and pushed | Nothing is pushed |
-| **Your local file** | Unchanged | Unchanged |
-| **Confluence** | Other resolved conflicts are pushed | No changes made |
-| **Next push** | Skipped conflicts reappear | All conflicts reappear |
-
----
-
-## Visual Conflict Resolution UI
-
-### Current Implementation (v1.0.0)
-
-The conflict modal shows:
+## Reading the Preview
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  Confluence Sync - Conflicts Detected               │
-├─────────────────────────────────────────────────────┤
-│  Conflict 1 of 3          [Previous] [Next]         │
-├──────────────────────┬──────────────────────────────┤
-│  Local (Yours)       │  Remote (Theirs)             │
-│  ┌────────────────┐  │  ┌────────────────┐          │
-│  │ Your changes   │  │  │ Their changes  │          │
-│  │ shown here     │  │  │ shown here     │          │
-│  └────────────────┘  │  └────────────────┘          │
-├──────────────────────┴──────────────────────────────┤
-│  Resolution: [Keep Local ▼]                         │
-│                                                      │
-│  [Cancel]                    [Merge & Push]         │
+│  Confluence has differences from your local note    │
+│                                                     │
+│  "Pull & Replace" will overwrite your local note    │
+│  body with the Confluence version shown in blue.    │
+│  Your local edits will be lost. Confluence is not   │
+│  modified.                                          │
+│                                                     │
+│  (unchanged lines shown as context)                 │
+│    your local line(s)      (green)                  │
+│    incoming remote line(s) (blue)                   │
+│                                                     │
+│  ... one block per difference, display only ...     │
+│                                                     │
+│  [Cancel (Keep Local)]          [Pull & Replace]    │
 └─────────────────────────────────────────────────────┘
 ```
 
-**Features:**
-- **Side-by-side comparison** of local vs remote changes
-- **Navigation** between multiple conflicts (if any)
-- **Dropdown selector** for resolution strategy
-- **Manual edit textarea** (appears when "Manual Edit" selected)
-- **Color-coded diff** (added lines, removed lines, unchanged)
+The diff area is keyboard-scrollable and screen-reader labelled. The blocks
+are **display only** — there are no buttons on them.
+
+| | **Pull & Replace** | **Cancel (Keep Local)** |
+|---|---|---|
+| **Local note body** | Replaced with Confluence version | Unchanged |
+| **`confluence-version`** | Set to fetched remote version | Unchanged |
+| **Other frontmatter** | Preserved | Unchanged |
+| **Confluence** | Unchanged (always) | Unchanged (always) |
+| **Next sync** | Identical unless the page changes again | Same differences reappear |
 
 ---
 
-## Future Implementation (Phase 3)
+## Safety Guards
 
-### FR-5: 3-Way Merge Resolution
+All of these abort the pull with a clear notice and **zero writes**:
 
-**Planned for Phase 3 (Weeks 6-9):**
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  3-Way Merge - Conflict Resolution                              │
-├──────────────┬──────────────┬──────────────┬────────────────────┤
-│  Local       │  Remote      │  Base        │  Merged Result     │
-│  (Yours)     │  (Theirs)    │  (Original)  │  (Editable)        │
-│  ┌────────┐  │  ┌────────┐  │  ┌────────┐  │  ┌──────────────┐ │
-│  │ Your   │  │  │ Their  │  │  │ Last   │  │  │ Final result │ │
-│  │ changes│  │  │ changes│  │  │ synced │  │  │ (you edit)   │ │
-│  └────────┘  │  └────────┘  │  └────────┘  │  └──────────────┘ │
-├──────────────┴──────────────┴──────────────┴────────────────────┤
-│  Quick Actions:                                                  │
-│  [Use Local]  [Use Remote]  [Auto-Merge]  [Manual Edit]        │
-│                                                                  │
-│  [Cancel]                                  [Apply Merge]        │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-**Enhancements:**
-- **Base version** panel showing last synced state
-- **Intelligent auto-merge** for non-conflicting changes
-- **Editable merged result** panel
-- **Word-level diff** (not just line-level)
-- **Syntax highlighting** for code blocks
-
----
-
-## Detailed Behavior Matrix
-
-| Scenario | Keep Local | Keep Remote | Keep Both (Local First) | Keep Both (Remote First) | Manual Edit |
-|----------|-----------|-------------|------------------------|-------------------------|-------------|
-| **You added a line** | ✅ Your line | ❌ Line removed | ✅ Your line first | ✅ Your line second | ✏️ You decide |
-| **They added a line** | ❌ Line ignored | ✅ Their line | ✅ Their line second | ✅ Their line first | ✏️ You decide |
-| **Both added different lines** | ✅ Your line | ✅ Their line | ✅ Yours, then theirs | ✅ Theirs, then yours | ✏️ You decide |
-| **You modified a line** | ✅ Your version | ❌ Original kept | ⚠️ Duplicate (yours first) | ⚠️ Duplicate (yours second) | ✏️ You decide |
-| **They modified a line** | ❌ Your version | ✅ Their version | ⚠️ Duplicate (theirs second) | ⚠️ Duplicate (theirs first) | ✏️ You decide |
-| **Both modified same line** | ✅ Your version | ✅ Their version | ⚠️ Yours, then theirs | ⚠️ Theirs, then yours | ✏️ You decide |
-
-**Legend:**
-- ✅ = Content included in result
-- ❌ = Content discarded
-- ⚠️ = May create duplicates or conflicts
-- ✏️ = You manually decide
-
----
-
-## Code Implementation Details
-
-### How Conflicts Are Detected
-
-```typescript
-// From diff-engine.ts (conceptual)
-1. Fetch remote Confluence content
-2. Convert to markdown
-3. Compare with local markdown using diff algorithm
-4. Identify conflicting blocks:
-   - Lines added locally (type: 'added')
-   - Lines removed remotely (type: 'removed')
-   - Lines modified by both (type: 'modified')
-```
-
-### How Resolutions Are Applied
-
-```typescript
-// From conflict-modal.ts line 259-272
-private resolveConflictBlock(
-    index: number, 
-    lines: DiffLine[], 
-    resolution: 'local' | 'remote' | 'both' | 'manual'
-): string {
-    if (resolution === 'manual') {
-        return this.manualContents.get(index) || '';
-    }
-
-    const localPart = lines
-        .filter(l => l.type === 'added')
-        .map(l => l.content)
-        .join('\n');
-    
-    const remotePart = lines
-        .filter(l => l.type === 'removed')
-        .map(l => l.content)
-        .join('\n');
-
-    if (resolution === 'local') return localPart;
-    if (resolution === 'remote') return remotePart;
-    if (resolution === 'both') return localPart + '\n' + remotePart;
-    
-    return localPart; // Default to local
-}
-```
-
-### Full Merge Process
-
-```typescript
-// From conflict-modal.ts line 136-256
-1. Iterate through all diff lines
-2. Group consecutive changed lines into conflict blocks
-3. For each conflict block:
-   a. Check user's resolution choice
-   b. Apply resolution strategy
-   c. Add resolved content to result
-4. Preserve unchanged lines between conflicts
-5. Return merged content
-```
+- **External change during preview**: if the note is modified while the
+  preview is open (another device, another plugin, or a manual edit), the
+  pull fails closed to protect the newer edit. Close the preview and re-sync.
+- **Empty remote content**: if the Confluence page converts to an empty or
+  whitespace-only body (usually a conversion failure), the pull is aborted
+  instead of blanking your note.
+- **Wrong host / protocol downgrade**: notes whose `confluence-url` points
+  to a different host than the configured Base URL — or use `http` when the
+  configured URL is `https` — are blocked before any request is sent.
+- **One sync per note**: duplicate sync triggers while a preview is open are
+  ignored.
+- **Plugin unload**: disabling the plugin while a preview is open closes it
+  and cancels any pending write.
 
 ---
 
 ## Best Practices
 
-### ✅ Recommended Approaches
+### ✅ Recommended
 
-1. **Review before resolving**
-   - Always read both local and remote changes
-   - Understand what changed and why
-
-2. **Use "Keep Local" for minor formatting**
-   - If you just fixed typos or formatting
-   - If remote changes are clearly outdated
-
-3. **Use "Keep Remote" for collaborative edits**
-   - If colleague added important information
-   - If you want to sync with team's latest version
-
-4. **Use "Keep Both" temporarily**
-   - When you need to see both versions side-by-side
-   - Plan to manually clean up afterward
-
-5. **Use "Manual Edit" for complex conflicts**
-   - When both versions have valuable content
-   - When you need to merge intelligently
+- Review the preview before clicking **Pull & Replace** — the replacement is
+  whole-body, not selective.
+- If you have local wording you want to keep, **Cancel**, copy your edits,
+  update the page **in Confluence**, then pull again. Confluence is the
+  source of truth.
+- Sync regularly — smaller diffs are easier to review.
 
 ### ❌ Common Pitfalls
 
-1. **Don't blindly choose "Keep Local"**
-   - You might lose important remote updates
-   - Always review what's being discarded
-
-2. **Don't use "Keep Both" as final solution**
-   - It often creates duplicate or contradictory content
-   - Use it as a stepping stone to manual edit
-
-3. **Don't ignore conflicts**
-   - Clicking "Cancel" doesn't resolve the issue
-   - The conflict will reappear on next push
-
----
-
-## Examples from Real Scenarios
-
-### Example 1: Documentation Update
-
-**Scenario:** You and a colleague both updated the same documentation page.
-
-```markdown
-# Original (Last Sync)
-Project Status: In Progress
-Deadline: TBD
-
-# Local (Yours)
-Project Status: In Progress
-Deadline: January 15, 2026
-Team: Alice, Bob
-
-# Remote (Theirs)
-Project Status: In Progress
-Deadline: January 20, 2026
-Budget: $50,000
-```
-
-**Best Resolution:** **Manual Edit**
-```markdown
-# Merged Result
-Project Status: In Progress
-Deadline: January 20, 2026  ← Take remote (more recent)
-Team: Alice, Bob             ← Keep local (new info)
-Budget: $50,000              ← Keep remote (new info)
-```
-
----
-
-### Example 2: Typo Fix vs Content Update
-
-**Scenario:** You fixed a typo while colleague added content.
-
-```markdown
-# Original
-The project requiers attention.
-
-# Local (Yours)
-The project requires attention.  ← Fixed typo
-
-# Remote (Theirs)
-The project requiers immediate attention and budget approval.
-```
-
-**Best Resolution:** **Manual Edit**
-```markdown
-# Merged Result
-The project requires immediate attention and budget approval.
-← Fixed typo + kept new content
-```
-
----
-
-### Example 3: Conflicting Decisions
-
-**Scenario:** You and colleague made opposite decisions.
-
-```markdown
-# Original
-Feature X: Under Review
-
-# Local (Yours)
-Feature X: Approved ✅
-
-# Remote (Theirs)
-Feature X: Rejected ❌
-```
-
-**Best Resolution:** **Manual Edit** (or discuss with team!)
-```markdown
-# Merged Result
-Feature X: Pending team discussion (conflicting decisions)
-```
+- Expecting local edits to survive **Pull & Replace** — they do not; the
+  body is replaced in full (frontmatter properties other than
+  `confluence-version` are preserved).
+- Expecting **Cancel (Keep Local)** to make the differences go away — it
+  keeps your note but does not update the version marker, so the same
+  preview will reappear next sync as long as note and page differ.
+- Expecting your local edits to reach Confluence — this plugin never
+  uploads; edit the page in Confluence directly.
 
 ---
 
 ## Troubleshooting
 
-### "I chose 'Keep Local' but my changes are gone!"
+### "I clicked Pull & Replace and my local edits are gone"
 
-**Cause:** You may have had multiple conflicts and resolved them differently.
+That is the documented behavior: the local body is replaced with the
+Confluence version in full. Use Obsidian's File Recovery core plugin (or
+your own backups) to recover previous local content if needed.
 
-**Solution:** 
-- Review all conflicts before clicking "Merge & Push"
-- Use "Previous/Next" buttons to check each conflict
-- Consider using "Cancel" and reviewing changes first
+### "The same preview keeps appearing on every sync"
 
----
+You chose **Cancel (Keep Local)** (or made new local edits). Your note and
+the page still differ, so the preview will keep appearing. Either pull the
+remote version, or update the page in Confluence to match what you want.
 
-### "Keep Both created duplicate content"
+### "The note was modified while the sync dialog was open"
 
-**Cause:** This is expected behavior - both versions are appended.
+Expected protection: something changed the note while the preview was open,
+and the pull was aborted to preserve that change. Close the preview and
+re-sync to compare against the latest content.
 
-**Solution:**
-- Use "Manual Edit" instead
-- Or use "Keep Both" then manually clean up the result
+### "The Confluence page appears empty after conversion"
 
----
+The pull was aborted to protect your note. Check the page in Confluence —
+if it genuinely has content, this may be a conversion issue worth reporting.
 
-### "I can't see what changed"
+### "Blocked sync: this note's confluence-url points to …"
 
-**Cause:** The diff view shows line-level changes, which may be hard to read.
-
-**Solution:**
-- Phase 3 will add word-level diff highlighting
-- For now, carefully read both panels
-- Copy content to external diff tool if needed
-
----
-
-## Future Enhancements
-
-### Phase 3 (Weeks 6-9)
-
-- ✅ **3-way merge** with base version
-- ✅ **Intelligent auto-merge** for non-conflicting changes
-- ✅ **Word-level diff** highlighting
-- ✅ **Editable merged result** panel
-
-### Phase 4 (Weeks 10-12)
-
-- ✅ **Conflict templates** for common scenarios
-- ✅ **Merge history** to undo bad merges
-- ✅ **AI-powered merge suggestions** (future consideration)
-
----
-
-## Summary
-
-| Resolution | Use When | Result | Risk |
-|-----------|----------|--------|------|
-| **Keep Local** | Your changes are correct | Your version wins | May lose remote updates |
-| **Keep Remote** | Remote is more up-to-date | Remote version wins | May lose your work |
-| **Keep Both (Local First)** | Need both, yours prioritized | Local + Remote | Creates duplicates |
-| **Keep Both (Remote First)** | Need both, remote prioritized | Remote + Local | Creates duplicates |
-| **Manual Edit** | Complex conflict | You decide exactly | Requires careful review |
-| **Skip (Resolve Later)** 🆕 | Not ready to decide | Keeps local, defer resolution | Conflict reappears next push |
-
-**Default:** Keep Local (safest for your work)  
-**Recommended:** Manual Edit (most control)  
-**New Options:**  
-- **Keep Both (Remote First)** - See "official" version first  
-- **Skip** - Defer this conflict, resolve others now
+For security, credentials are only sent to the exact protocol and host
+configured as **Confluence Base URL** in Settings. Fix the note's URL or
+update the setting if the host is legitimate.
 
 ---
 
 ## Related Documentation
 
-- **PRD**: `PRD_VERSION_CONTROL_PULL.md` - FR-5 (3-Way Merge Resolution)
-- **Roadmap**: `ROADMAP_VERSION_CONTROL.md` - Phase 3 (Smart Merge)
-- **Code**: `src/ui/conflict-modal.ts` - Implementation details
-
----
-
-**Questions?** See `MIGRATION_GUIDE.md` or open a GitHub issue.
+- [README](../README.md) — setup and usage
+- [PRD_PULL_ONLY_UX_REDESIGN](PRD_PULL_ONLY_UX_REDESIGN.md) — design rationale for the pull-only preview UX (historical sections marked)

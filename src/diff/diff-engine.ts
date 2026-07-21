@@ -1,12 +1,73 @@
-import { diff_match_patch, Diff } from 'diff-match-patch';
 // @ts-ignore
 import TurndownService from 'turndown';
 // @ts-ignore
 import * as TurndownPluginGfm from 'turndown-plugin-gfm';
 const gfm = TurndownPluginGfm.gfm || TurndownPluginGfm;
-import { DiffResult, DiffLine, ConflictBlock } from '../models';
+import { DiffResult } from '../models';
 import { normalizeMarkdown } from '../utils/markdown-normalizer';
 import { PluginLogger } from '../utils/logger';
+
+const CALLOUT_TITLE_MAX_LENGTH = 200;
+
+/**
+ * Sanitize a Confluence macro title before embedding it in an Obsidian
+ * callout header line (`> [!type] title`).
+ *
+ * Remote page authors control this string, so it must not be able to break
+ * out of the single header line or introduce new Markdown structure:
+ * - collapse ALL whitespace (CR/LF/tabs/unicode separators) to single spaces
+ * - escape characters that could start new structure or alter the callout
+ *   (backslash first, then [ ] ( ) ` # > * _ ~ | ! -)
+ * - cap the length to keep pathological titles from flooding the note
+ */
+export function sanitizeCalloutTitle(raw: string): string {
+    if (!raw) return '';
+    let title = raw.replace(/\s+/g, ' ').trim();
+    if (title.length > CALLOUT_TITLE_MAX_LENGTH) {
+        title = title.substring(0, CALLOUT_TITLE_MAX_LENGTH) + '…';
+    }
+    // Backslash MUST be escaped first, then Markdown-significant characters.
+    title = title.replace(/\\/g, '\\\\');
+    title = title.replace(/([[\]()`#>*_~|!-])/g, '\\$1');
+    return title;
+}
+
+const BLOCKED_URL_SCHEMES = new Set([
+    'javascript', 'data', 'vbscript', 'file', 'obsidian',
+]);
+
+/**
+ * Decide whether an anchor href is safe to keep as a clickable Markdown link.
+ *
+ * Allowed: http(s), mailto, and scheme-less (relative/anchor/protocol-relative)
+ * links. Blocked: javascript/data/vbscript/file/obsidian and any other exotic
+ * scheme. Obfuscation via case, leading/embedded whitespace, control chars,
+ * or percent-encoding of the scheme separator is normalized before checking.
+ */
+export function isSafeHref(rawHref: string): boolean {
+    if (!rawHref) return true; // empty href → harmless, Turndown drops it
+
+    // Strip control chars and whitespace that browsers ignore inside scheme
+    // (e.g. "java\tscript:", " javascript:", "java\nscript:").
+    let candidate = rawHref.replace(/[\u0000-\u0020\u007f]/g, '');
+
+    // Percent-decode ONCE to catch "%6Aavascript:" style scheme hiding.
+    try {
+        candidate = decodeURIComponent(candidate);
+        candidate = candidate.replace(/[\u0000-\u0020\u007f]/g, '');
+    } catch {
+        // Malformed percent-encoding — keep the stripped original.
+    }
+
+    const schemeMatch = candidate.match(/^([a-z][a-z0-9+.-]*):/i);
+    if (!schemeMatch) return true; // relative URL, #anchor, or //host
+
+    const scheme = schemeMatch[1].toLowerCase();
+    if (scheme === 'http' || scheme === 'https' || scheme === 'mailto') return true;
+    if (BLOCKED_URL_SCHEMES.has(scheme)) return false;
+    // Default-deny every other exotic scheme as well.
+    return false;
+}
 
 export class DiffEngine {
     private logger?: PluginLogger;
@@ -23,35 +84,36 @@ export class DiffEngine {
         remoteStorageFormat: string
     ): Promise<DiffResult> {
 
-        // === DEBUG LOGGING: Raw inputs ===
+        // === DEBUG LOGGING ===
+        // PRIVACY: only metadata (lengths, counts, timings) is ever logged.
+        // Note bodies, remote XHTML/Markdown, and normalized text must never
+        // be passed to the logger — not even behind the debug flag.
         this.logger?.info('=== DIFF ENGINE DEBUG START ===');
-        this.logger?.info('Raw Remote Storage Format (Confluence XHTML)', {
-            length: remoteStorageFormat.length,
-            content: remoteStorageFormat
-        });
-        this.logger?.info('Raw Local Markdown', {
-            length: localMarkdown.length,
-            content: localMarkdown
+        this.logger?.info('Diff inputs', {
+            remoteStorageLength: remoteStorageFormat.length,
+            localMarkdownLength: localMarkdown.length
         });
 
         // Convert remote Confluence storage format to Markdown
+        const convertStart = Date.now();
         const remoteMarkdown = await this.convertStorageToMarkdown(
             remoteStorageFormat
         );
 
-        // === DEBUG LOGGING: After conversion ===
-        this.logger?.info('Converted Remote Markdown (after Turndown conversion)', {
-            length: remoteMarkdown.length,
-            content: remoteMarkdown
+        this.logger?.info('Conversion complete', {
+            convertedLength: remoteMarkdown.length,
+            durationMs: Date.now() - convertStart
         });
 
-        // Debugging logs detection
+        // Table conversion diagnostics — metadata only.
         if (remoteStorageFormat.includes('<table')) {
-            console.log('[DiffEngine] Table detected in remote storage format.');
-            console.log('[DiffEngine] Remote Storage Length:', remoteStorageFormat.length);
-            console.log('[DiffEngine] Converted Markdown Preview:', remoteMarkdown.substring(0, 500));
-            if (!remoteMarkdown.includes('|')) {
-                console.warn('[DiffEngine] WARNING: Table detected but no Markdown table syntax found!');
+            const tableSyntaxFound = remoteMarkdown.includes('|');
+            this.logger?.info('[DiffEngine] Table detected in remote storage format', {
+                remoteStorageLength: remoteStorageFormat.length,
+                tableSyntaxFound
+            });
+            if (!tableSyntaxFound) {
+                this.logger?.warn('[DiffEngine] Table detected but no Markdown table syntax found after conversion');
             }
         }
 
@@ -59,17 +121,17 @@ export class DiffEngine {
         const normalizedLocal = normalizeMarkdown(localMarkdown);
         const normalizedRemote = normalizeMarkdown(remoteMarkdown);
 
-        // === DEBUG LOGGING: After normalization ===
-        this.logger?.info('Normalized Local Markdown', {
-            length: normalizedLocal.length,
-            content: normalizedLocal
-        });
-        this.logger?.info('Normalized Remote Markdown', {
-            length: normalizedRemote.length,
-            content: normalizedRemote
+        this.logger?.info('Normalization complete', {
+            normalizedLocalLength: normalizedLocal.length,
+            normalizedRemoteLength: normalizedRemote.length
         });
 
-        // === DEBUG LOGGING: Check if normalized contents are identical ===
+        // Equality after normalization is the single source of truth.
+        // NOTE: No per-line diff is computed here. The conflict modal
+        // (FileDiffView/computeFileDiff) computes detailed difference blocks
+        // lazily only when it opens — running a diff pass here would allocate
+        // tens of thousands of per-line objects on large pages with no
+        // production consumer (its only historical use was debug logging).
         const areIdentical = normalizedLocal === normalizedRemote;
         this.logger?.info('Comparison Result', {
             areIdentical,
@@ -77,188 +139,61 @@ export class DiffEngine {
             remoteLength: normalizedRemote.length
         });
 
-        // Perform diff using library
-        const dmp = new diff_match_patch();
-        const diffs = dmp.diff_main(normalizedRemote, normalizedLocal);
-        dmp.diff_cleanupSemantic(diffs);
-
-        // Convert diffs to our format
-        const diffLines = this.convertToLines(diffs);
-
-        // Identify conflict blocks
-        const conflicts = this.identifyConflicts(diffLines);
-
-        // === DEBUG LOGGING: Diff results ===
-        const changedLines = diffLines.filter(l => l.type !== 'unchanged');
-        this.logger?.info('Diff Analysis', {
-            totalLines: diffLines.length,
-            unchangedLines: diffLines.filter(l => l.type === 'unchanged').length,
-            addedLines: diffLines.filter(l => l.type === 'added').length,
-            removedLines: diffLines.filter(l => l.type === 'removed').length,
-            conflictBlocks: conflicts.length
-        });
-
-        if (changedLines.length > 0) {
-            this.logger?.info('Changed Lines (first 20)', {
-                changes: changedLines.slice(0, 20).map(l => ({
-                    type: l.type,
-                    lineNumber: l.lineNumber,
-                    content: l.content,
-                    charCodes: l.content.split('').map(c => c.charCodeAt(0)).join(',')
-                }))
-            });
-        }
-
         this.logger?.info('=== DIFF ENGINE DEBUG END ===');
 
-        if (conflicts.length > 0) {
-            console.warn('[DiffEngine] Conflicts detected!');
-            // Detailed debug for the first conflict
-            const firstConflict = conflicts[0];
-            const localLineIdx = firstConflict.localLines[0]?.lineNumber; // This might be index, careful
-            // Actually diffLines have lineNumber.
-
-            // Log the raw and normalized content comparison for the first few differences
-            const diffsOnly = diffLines.filter(l => l.type !== 'unchanged').slice(0, 5);
-            diffsOnly.forEach(d => {
-                console.log(`[DiffEngine-Debug] Diff Line (${d.type}): "${d.content}"`);
-                console.log(`[DiffEngine-Debug] Char codes: ${d.content.split('').map(c => c.charCodeAt(0)).join(',')}`);
-            });
-        }
-
         return {
-            hasConflicts: conflicts.length > 0,
-            conflicts,
+            hasConflicts: !areIdentical,
+            isIdentical: areIdentical,
             remoteVersion: 0, // Set by caller
-            remoteContent: normalizedRemote,
-            localContent: normalizedLocal,
-            diffLines
+            // Return ORIGINAL content (not normalized) so that anything the
+            // user applies to the local file preserves original formatting.
+            // Normalization is only used internally for comparison.
+            remoteContent: remoteMarkdown,
+            localContent: localMarkdown
         };
     }
 
-    private convertToLines(diffs: Diff[]): DiffLine[] {
-        const lines: DiffLine[] = [];
-        let lineNumber = 1;
-
-        for (const [type, text] of diffs) {
-            const textLines = text.split('\n');
-            // If the last element is empty, it means the text ended with a newline,
-            // so split creates an empty string at the end. We handle this carefully.
-            // However, standard split behavior: "a\n".split('\n') -> ["a", ""]
-            // We usually want to process lines.
-
-            for (let i = 0; i < textLines.length; i++) {
-                const lineContent = textLines[i];
-                // Determine line type
-                let lineType: 'unchanged' | 'added' | 'removed' | 'modified' = 'unchanged';
-                if (type === 1) lineType = 'added';
-                else if (type === -1) lineType = 'removed';
-
-                // If it's a newline separator (empty string result) inside a block?
-                // Actually diffs works on characters usually, unless we use line mode.
-                // DMP is character based.
-                // The "Line based" logic in spec implies we might want to run diff_linesToChars first 
-                // or just map character diffs to lines.
-
-                // For simplicity and spec compliance "Use a line-based diff algorithm",
-                // let's try to simulate line-based diff using DMP's helper or just treat it roughly.
-                // DMP has diff_linesToChars.
-
-                // But let's look at the implementation in the prompt: it says "Use a line-based diff algorithm".
-                // And sample implementation:
-                // const dmp = new DiffMatchPatch();
-                // const diffs = dmp.diff_main(remoteMarkdown, localMarkdown);
-                // dmp.diff_cleanupSemantic(diffs);
-                // const diffLines = this.convertToLines(diffs);
-
-                // If dmp.diff_main is character based, converting to lines is non-trivial if edits span partial lines.
-                // However a simple "convertToLines" might just push lines.
-                // If we want true line diff, we should use dmp.diff_linesToChars which is a common trick.
-                // But I'll stick to a simpler interpretation or just assume character diffs aligned to newlines for now
-                // to match the spec's simpler "convertToLines" method signature.
-                // Actually, if I ignore partial line edits and just say "if a line has any change, mark it modified",
-                // that's safer.
-
-                if (i < textLines.length - 1 || lineContent.length > 0) {
-                    lines.push({
-                        lineNumber: type !== -1 ? lineNumber++ : lineNumber, // Increment local line num only if not removed?
-                        // Wait, line numbers refer to local file usually. 
-                        // If removed, it's not in local file.
-                        // Spec says: "lineNumber: number". 
-                        // Let's assume it tracks the resulting (local) line numbers for added/unchanged, 
-                        // and maybe remote line numbers for removed?
-                        // Or just a sequential index for the diff view.
-                        content: lineContent,
-                        type: lineType
-                    });
-                }
-            }
-        }
-        return lines;
-    }
-
     /**
-     * Identify conflict blocks from diff lines
-     */
-    private identifyConflicts(diffLines: DiffLine[]): ConflictBlock[] {
-        const conflicts: ConflictBlock[] = [];
-        let currentConflict: ConflictBlock | null = null;
-
-        for (let i = 0; i < diffLines.length; i++) {
-            const line = diffLines[i];
-
-            if (line.type !== 'unchanged') {
-                // Start new conflict block
-                if (!currentConflict) {
-                    currentConflict = {
-                        startLine: line.lineNumber,
-                        endLine: line.lineNumber,
-                        localLines: [],
-                        remoteLines: []
-                    };
-                }
-
-                // Add to current conflict
-                currentConflict.endLine = line.lineNumber;
-
-                if (line.type === 'added') {
-                    currentConflict.localLines.push(line);
-                } else if (line.type === 'removed') {
-                    currentConflict.remoteLines.push(line);
-                } else if (line.type === 'modified') {
-                    // Treating as both added and removed? Or just one?
-                    // DMP standard: -1 then 1. 
-                    // Modified line usually appears as removed then added.
-                    // So we likely won't see 'modified' type directly from a simple parser unless we merge.
-                }
-
-            } else {
-                // Close current conflict block
-                if (currentConflict) {
-                    conflicts.push(currentConflict);
-                    currentConflict = null;
-                }
-            }
-        }
-
-        // Close final conflict if exists
-        if (currentConflict) {
-            conflicts.push(currentConflict);
-        }
-
-        return conflicts;
-    }
-
-    /**
-     * Convert Confluence storage format to Markdown
+     * Convert Confluence storage format to Markdown.
+     *
+     * MEMORY: the DOM pre-processing lives in its own method so that the
+     * parsed `doc` (a full DOM copy of the page) goes out of scope and is
+     * collectable BEFORE Turndown re-parses the cleaned HTML string into its
+     * own internal DOM. This avoids holding three full-page representations
+     * (pre-processing DOM + cleaned string + Turndown DOM) alive at once on
+     * large pages. This is a structural scope fix — not a GC hint.
      */
     private async convertStorageToMarkdown(
         storageFormat: string
     ): Promise<string> {
+        const cleanHtml = this.preprocessStorageToCleanHtml(storageFormat);
+        return this.turndownCleanHtml(cleanHtml);
+    }
+
+    /**
+     * Parse Confluence XHTML, apply all DOM pre-processing, and serialize
+     * back to a cleaned HTML string. The DOM created here does not escape
+     * this method.
+     */
+    private preprocessStorageToCleanHtml(storageFormat: string): string {
         // Use DOMParser to clean up Confluence XHTML
         // This is much safer than regex for complex structures like tables
         const parser = new DOMParser();
         const doc = parser.parseFromString(storageFormat, 'text/html');
+
+        // 0. SECURITY: neutralize anchors with dangerous URL schemes BEFORE
+        // Turndown turns them into clickable Markdown links. Done at the DOM
+        // level so obfuscation (case, whitespace, control chars, percent
+        // encoding of the scheme) is handled by one decoder, and legitimate
+        // parentheses/brackets in URLs are untouched.
+        doc.querySelectorAll('a[href]').forEach(anchor => {
+            const href = anchor.getAttribute('href') || '';
+            if (!isSafeHref(href)) {
+                // Keep the visible text, drop the link entirely.
+                const text = doc.createTextNode(anchor.textContent || '');
+                anchor.parentNode?.replaceChild(text, anchor);
+            }
+        });
 
         // 1. Pre-process Tables for Turndown GFM compatibility
         const tables = doc.querySelectorAll('table');
@@ -460,12 +395,18 @@ export class DiffEngine {
 
         // Get cleaned HTML for Turndown
         // We also do a final regex cleanup for tag names that might still have colons in some environments
-        let cleanHtml = doc.body.innerHTML
+        return doc.body.innerHTML
             .replace(/<ac:([\w-]+)/gi, '<$1')
             .replace(/<\/ac:([\w-]+)/gi, '</$1')
             .replace(/<ri:([\w-]+)/gi, '<$1')
             .replace(/\u003c\/ri:([\w-]+)/gi, '</$1');
+    }
 
+    /**
+     * Run Turndown (plus post-processing) on the cleaned HTML string.
+     * By the time this runs, the pre-processing DOM is out of scope.
+     */
+    private turndownCleanHtml(cleanHtml: string): string {
         const turndownService = new TurndownService({
             headingStyle: 'atx',
             codeBlockStyle: 'fenced',
@@ -525,9 +466,10 @@ export class DiffEngine {
 
                 const calloutType = macroToCallout[macroName.toLowerCase()];
                 if (calloutType) {
+                    const safeTitle = sanitizeCalloutTitle(titleParam);
                     const lines = content.trim().split('\n');
                     const calloutContent = lines.map(line => `> ${line}`).join('\n');
-                    return `\n> [!${calloutType}] ${titleParam}\n${calloutContent}\n`;
+                    return `\n> [!${calloutType}]${safeTitle ? ' ' + safeTitle : ''}\n${calloutContent}\n`;
                 }
                 return content;
             }
@@ -570,15 +512,25 @@ export class DiffEngine {
 
         let markdown = turndownService.turndown(cleanHtml);
 
-        // Post-processing: Remove unnecessary backslash escapes that Turndown adds
-        // These escapes cause perpetual diffs between local and remote
+        // Post-processing: Remove a conservative set of backslash escapes that
+        // Turndown adds and that cause perpetual diffs. Each removal is limited
+        // to contexts where the escape cannot change Markdown semantics:
+        //
+        //   \- at line-start → only list-marker position; safe to remove
+        //      because Obsidian does not treat a bare "-" at the start of a
+        //      non-list paragraph as a list item when the line has content.
+        //   \[ and \] → always safe: Turndown escapes these even inside code
+        //      spans where they are literal characters in both forms.
+        //
+        // NOT removed globally:
+        //   \* — could protect a literal "*" that would otherwise start bold
+        //   \# — "# Foo" at line-start would become a heading
+        //   \_ — could start italic/bold
+        //   Numeric \. — "1\." protects ordered-list markers
         markdown = markdown
-            .replace(/\\-/g, '-')      // Escaped hyphens
-            .replace(/\\\*/g, '*')     // Escaped asterisks (when not needed)
-            .replace(/\\\[/g, '[')     // Escaped brackets
-            .replace(/\\]/g, ']')
-            .replace(/\\#/g, '#')      // Escaped hash
-            .replace(/\\_/g, '_');     // Escaped underscores
+            .replace(/^\\-/gm, '-')    // Line-leading escaped hyphen (list-marker artifact)
+            .replace(/\\\[/g, '[')     // Escaped opening bracket (safe everywhere)
+            .replace(/\\]/g, ']');     // Escaped closing bracket (safe everywhere)
 
         return markdown;
     }
