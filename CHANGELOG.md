@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.0.12] - 2026-07-23
+### Fixed
+- **Obsidian Community Plugin review fixes**:
+  - Replaced redundant/prohibited settings section headings ("Confluence Page Import Settings", "Advanced Options") with neutral functional labels ("Connection", "Advanced options") using `Setting.setHeading()`.
+- Version bumped to 1.0.12.
+
 ## [1.0.11] - 2026-07-23
 ### Fixed
 - **Obsidian Community Plugin review fixes**:

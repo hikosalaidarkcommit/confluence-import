@@ -26,7 +26,7 @@ export class ConfluenceSettingsTab extends PluginSettingTab {
         containerEl.empty();
         
         new Setting(containerEl)
-            .setName('Confluence Page Import Settings')
+            .setName('Connection')
             .setHeading();
 
         containerEl.createEl('p', {
@@ -116,7 +116,7 @@ export class ConfluenceSettingsTab extends PluginSettingTab {
 
 
         new Setting(containerEl)
-            .setName('Advanced Options')
+            .setName('Advanced options')
             .setHeading();
 
         new Setting(containerEl)
