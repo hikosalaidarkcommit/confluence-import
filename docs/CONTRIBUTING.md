@@ -9,8 +9,8 @@
 
 2. **Clone and Install**:
    ```bash
-   git clone https://github.com/hikosalaidarkcommit/obsidian-sync-confluence.git
-   cd obsidian-sync-confluence
+   git clone https://github.com/hikosalaidarkcommit/confluence-import.git
+   cd confluence-import
    npm install
    ```
 

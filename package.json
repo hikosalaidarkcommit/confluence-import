@@ -18,7 +18,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/hikosalaidarkcommit/obsidian-sync-confluence.git"
+    "url": "https://github.com/hikosalaidarkcommit/confluence-import.git"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

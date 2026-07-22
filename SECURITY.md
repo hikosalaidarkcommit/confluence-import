@@ -12,7 +12,7 @@ Only the latest released version of this plugin receives security fixes.
 ## Reporting a Vulnerability
 
 Please report vulnerabilities **privately** via
-[GitHub Security Advisories](https://github.com/hikosalaidarkcommit/obsidian-sync-confluence/security/advisories/new)
+[GitHub Security Advisories](https://github.com/hikosalaidarkcommit/confluence-import/security/advisories/new)
 ("Report a vulnerability" on the repository's Security tab).
 
 - Do **not** open a public issue for security reports.
@@ -78,7 +78,6 @@ content, tokens, or emails).
 - **Third-party licenses**: bundled runtime dependencies and their license
   texts are listed in `THIRD_PARTY_NOTICES.md`.
 - **Repository**: the canonical repository is
-  `hikosalaidarkcommit/obsidian-sync-confluence`. (Historical note: the
-  project previously lived under a legacy repository name from an earlier
-  bidirectional design; the plugin is strictly pull-only.)
-repository owner on GitHub.
+  `hikosalaidarkcommit/confluence-import`. (Historical note: the
+  project previously lived under `obsidian-sync-confluence` during an earlier
+  pre-release phase; that name is no longer active.)

@@ -173,7 +173,7 @@ plugin folder. Privacy and safety guarantees:
   byte-compare any published artifact. Bundled third-party licenses are
   listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 - **Repository**: source code, issues, and security reporting live at
-  [github.com/hikosalaidarkcommit/obsidian-sync-confluence](https://github.com/hikosalaidarkcommit/obsidian-sync-confluence).
+  [github.com/hikosalaidarkcommit/confluence-import](https://github.com/hikosalaidarkcommit/confluence-import).
 
 ## Troubleshooting
 

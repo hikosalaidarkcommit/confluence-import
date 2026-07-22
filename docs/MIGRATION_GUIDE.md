@@ -180,8 +180,8 @@ If the plugin detects a version conflict (409 error from Confluence API):
 
 ## Getting Help
 
-- **Issues**: Report bugs on [GitHub Issues](https://github.com/hikosalaidarkcommit/obsidian-sync-confluence/issues)
-- **Discussions**: Ask questions in [GitHub Discussions](https://github.com/hikosalaidarkcommit/obsidian-sync-confluence/discussions)
+- **Issues**: Report bugs on [GitHub Issues](https://github.com/hikosalaidarkcommit/confluence-import/issues)
+- **Discussions**: Ask questions in [GitHub Discussions](https://github.com/hikosalaidarkcommit/confluence-import/discussions)
 - **Documentation**: See [README.md](../README.md) for full documentation
 
 ---
