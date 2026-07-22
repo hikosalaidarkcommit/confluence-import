@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.0.13] - 2026-07-23
+### Fixed
+- **Obsidian Community Plugin review fixes**:
+  - Renamed the "Advanced options" settings section heading to "Diagnostics" to eliminate the redundant word "options" in the settings context.
+- Version bumped to 1.0.13.
+
 ## [1.0.12] - 2026-07-23
 ### Fixed
 - **Obsidian Community Plugin review fixes**:

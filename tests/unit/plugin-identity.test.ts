@@ -35,7 +35,7 @@ describe('manifest identity', () => {
     });
 
     test('version/minAppVersion/desktop contract intact', () => {
-        expect(manifest.version).toBe('1.0.12');
+        expect(manifest.version).toBe('1.0.13');
         expect(manifest.minAppVersion).toBe('1.4.4');
         expect(manifest.isDesktopOnly).toBe(true);
     });
@@ -99,7 +99,7 @@ describe('settings heading compliance', () => {
             expect(label.toLowerCase()).not.toContain('settings');
             
             // Expected functional labels
-            expect(['Connection', 'Advanced options']).toContain(label);
+            expect(['Connection', 'Diagnostics']).toContain(label);
         }
     });
 });

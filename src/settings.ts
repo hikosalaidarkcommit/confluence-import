@@ -116,7 +116,7 @@ export class ConfluenceSettingsTab extends PluginSettingTab {
 
 
         new Setting(containerEl)
-            .setName('Advanced options')
+            .setName('Diagnostics')
             .setHeading();
 
         new Setting(containerEl)
