@@ -1,7 +1,7 @@
 {
   "name": "confluence-import",
-  "version": "1.0.9",
-  "description": "Import Confluence pages into Obsidian notes (one-way pull) with a read-only diff preview before anything is written.",
+  "version": "1.0.10",
+  "description": "Import Confluence pages as local notes (one-way pull) with a read-only diff preview before anything is written.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",

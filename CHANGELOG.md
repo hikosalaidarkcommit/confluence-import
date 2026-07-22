@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
+### Fixed
+- **Comply with Community Plugin review**: Removed prohibited word "Obsidian" from the manifest description.
+- Version bumped to 1.0.10.
+### Added
+- **Artifact Attestation workflow**: Configured GitHub Actions to generate build provenance attestations for release artifacts (`main.js`, `manifest.json`, `styles.css`) using the official `actions/attest-build-provenance`.
+
+## [1.0.9] - 2026-07-22
 ### Changed
 - **Plugin renamed to "Confluence Page Import"**: the previous name "Confluence Import" collided with an existing plugin in the Obsidian Community Plugins directory. The unique ID `confluence-import` remains unchanged. All UI labels, command prefixes, and documentation updated to the new display name.
 - Version bumped to 1.0.9 to reflect the manifest identity change.

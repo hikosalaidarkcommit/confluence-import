@@ -30,11 +30,12 @@ describe('manifest identity', () => {
         expect(manifest.description.length).toBeLessThanOrEqual(250);
         expect(manifest.description).toMatch(/^Import /);
         expect(manifest.description.endsWith('.')).toBe(true);
+        expect(manifest.description.toLowerCase()).not.toContain('obsidian');
         expect(manifest.description.toLowerCase()).not.toContain('push');
     });
 
     test('version/minAppVersion/desktop contract intact', () => {
-        expect(manifest.version).toBe('1.0.9');
+        expect(manifest.version).toBe('1.0.10');
         expect(manifest.minAppVersion).toBe('1.4.4');
         expect(manifest.isDesktopOnly).toBe(true);
     });
