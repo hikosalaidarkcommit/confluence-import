@@ -11,7 +11,7 @@ export default class ConfluenceSyncPlugin extends Plugin implements ConfluenceSy
     logger: PluginLogger;
 
     // Pending debounce timer for text-field settings saves.
-    private _saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+    private _saveDebounceTimer: number | null = null;
 
     async onload() {
         // Load settings
@@ -110,7 +110,7 @@ export default class ConfluenceSyncPlugin extends Plugin implements ConfluenceSy
         this.logger.info('Plugin unloading');
         // Flush any pending settings write.
         if (this._saveDebounceTimer !== null) {
-            clearTimeout(this._saveDebounceTimer);
+            window.clearTimeout(this._saveDebounceTimer);
             this._saveDebounceTimer = null;
             await this.saveData(this.settings);
         }
@@ -144,9 +144,9 @@ export default class ConfluenceSyncPlugin extends Plugin implements ConfluenceSy
      */
     saveSettingsDebounced(delayMs = 400): void {
         if (this._saveDebounceTimer !== null) {
-            clearTimeout(this._saveDebounceTimer);
+            window.clearTimeout(this._saveDebounceTimer);
         }
-        this._saveDebounceTimer = setTimeout(async () => {
+        this._saveDebounceTimer = window.setTimeout(async () => {
             this._saveDebounceTimer = null;
             await this.saveSettings();
         }, delayMs);

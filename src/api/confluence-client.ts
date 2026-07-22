@@ -17,7 +17,7 @@ export interface ConfluenceApiConfig {
  * back to individual bytes that `btoa` can handle.
  */
 /** A Confluence page version must be a finite positive integer. */
-function isValidVersionNumber(v: any): boolean {
+function isValidVersionNumber(v: unknown): boolean {
   return typeof v === 'number' && Number.isFinite(v) && Number.isInteger(v) && v > 0;
 }
 
@@ -73,14 +73,14 @@ export class ConfluenceApiClient {
    * valid PageContent object. Guards against truncated responses, unexpected
    * API changes, or non-JSON bodies that requestUrl silently returns as null.
    */
-  private assertPageShape(data: any): asserts data is PageContent {
+  private assertPageShape(data: unknown): asserts data is PageContent {
     if (
       data == null ||
       typeof data !== 'object' ||
-      typeof data.id !== 'string' ||
-      typeof data.title !== 'string' ||
-      typeof data.body?.storage?.value !== 'string' ||
-      !isValidVersionNumber(data.version?.number)
+      typeof (data as any).id !== 'string' ||
+      typeof (data as any).title !== 'string' ||
+      typeof (data as any).body?.storage?.value !== 'string' ||
+      !isValidVersionNumber((data as any).version?.number)
     ) {
       throw new ConfluenceApiError(
         0,
@@ -96,14 +96,14 @@ export class ConfluenceApiClient {
    * consume (id, title, version.number, space.key). Body is not required
    * because search callers use expand without body.
    */
-  private assertSearchResultShape(entry: any): void {
+  private assertSearchResultShape(entry: unknown): void {
     if (
       entry == null ||
       typeof entry !== 'object' ||
-      typeof entry.id !== 'string' ||
-      typeof entry.title !== 'string' ||
-      !isValidVersionNumber(entry.version?.number) ||
-      typeof entry.space?.key !== 'string'
+      typeof (entry as any).id !== 'string' ||
+      typeof (entry as any).title !== 'string' ||
+      !isValidVersionNumber((entry as any).version?.number) ||
+      typeof (entry as any).space?.key !== 'string'
     ) {
       throw new ConfluenceApiError(
         0,

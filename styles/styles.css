@@ -60,6 +60,14 @@
   border-radius: 2px;
 }
 
+.file-diff__preview-container {
+  max-height: 500px;
+  overflow: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  margin-bottom: 16px;
+}
+
 .file-diff__footer {
   margin-top: 16px;
   padding-top: 16px;

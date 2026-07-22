@@ -16,7 +16,7 @@ describe('sanitizeLogData (redaction)', () => {
             apiToken: 'secret-123',
             nested: { authorization: 'Bearer abc', userEmail: 'a@b.com' },
             password: 'hunter2',
-        });
+        }) as any;
         expect(out.apiToken).toBe('[REDACTED]');
         expect(out.nested.authorization).toBe('[REDACTED]');
         expect(out.nested.userEmail).toBe('[REDACTED]');
@@ -29,7 +29,7 @@ describe('sanitizeLogData (redaction)', () => {
             remoteContent: 'x'.repeat(5000),
             body: 'page body',
             count: 42,
-        });
+        }) as any;
         expect(out.content).toBe('[content: 46 chars]');
         expect(out.remoteContent).toBe('[content: 5000 chars]');
         expect(out.body).toBe('[content: 9 chars]');
@@ -44,13 +44,13 @@ describe('sanitizeLogData (redaction)', () => {
     });
 
     test('truncates very long non-content strings', () => {
-        const out = sanitizeLogData('a'.repeat(500));
+        const out = sanitizeLogData('a'.repeat(500)) as string;
         expect(out.length).toBeLessThan(260);
         expect(out).toContain('[+300 chars]');
     });
 
     test('serializes Error objects with bounded stack', () => {
-        const out = sanitizeLogData(new Error('boom'));
+        const out = sanitizeLogData(new Error('boom')) as any;
         expect(out.message).toBe('boom');
         expect(out.stack.split('\n').length).toBeLessThanOrEqual(8);
     });

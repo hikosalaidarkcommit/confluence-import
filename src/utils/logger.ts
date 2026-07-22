@@ -47,8 +47,8 @@ function sanitizeUrlLike(value: string): string {
  * - content keys   → '[content: N chars]'
  * - URL-looking strings → origin+path only
  * - long strings truncated
- */
-export function sanitizeLogData(data: any, depth = 0): any {
+ * */
+export function sanitizeLogData(data: unknown, depth = 0): unknown {
     if (data === null || data === undefined) return data;
     if (depth > MAX_DEPTH) return '[max depth]';
 
@@ -69,8 +69,8 @@ export function sanitizeLogData(data: any, depth = 0): any {
     }
 
     if (typeof data === 'object') {
-        const out: Record<string, any> = {};
-        for (const [key, value] of Object.entries(data)) {
+        const out: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
             if (keyMatches(key, SENSITIVE_KEY_FRAGMENTS)) {
                 out[key] = '[REDACTED]';
             } else if (keyMatches(key, CONTENT_KEY_FRAGMENTS) && typeof value === 'string') {
@@ -110,19 +110,19 @@ export class PluginLogger {
         this.logFilePath = path.join(vaultBasePath, pluginManifestDir, 'debug.log');
     }
 
-    info(message: string, data?: any) {
+    info(message: string, data?: unknown) {
         this.log('INFO', message, data);
     }
 
-    error(message: string, data?: any) {
+    error(message: string, data?: unknown) {
         this.log('ERROR', message, data);
     }
 
-    warn(message: string, data?: any) {
+    warn(message: string, data?: unknown) {
         this.log('WARN', message, data);
     }
 
-    private log(level: string, message: string, data?: any) {
+    private log(level: string, message: string, data?: unknown) {
         if (!this.settings.enableDebugLogging || this.closed) return;
 
         const timestamp = new Date().toISOString();

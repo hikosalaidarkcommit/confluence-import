@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
+
+## [1.0.11] - 2026-07-23
+### Fixed
+- **Obsidian Community Plugin review fixes**:
+  - Eliminated all unsafe `.innerHTML =` assignments in `DiffEngine` by using safe DOM APIs (manual node transfers).
+  - Replaced direct HTML heading creation (`createEl('h2/h3', ...)`) in settings with the recommended Obsidian Setting `.setHeading()` pattern.
+  - Replaced inline element style assignments in the conflict modal with semantic CSS classes in `styles/styles.css`.
+  - Fixed multiple warnings: replaced `setTimeout` with `window.setTimeout` and refined `any` types to `unknown` for better type safety.
+- Version bumped to 1.0.11.
+
+## [1.0.10] - 2026-07-23
 ### Fixed
 - **Comply with Community Plugin review**: Removed prohibited word "Obsidian" from the manifest description.
 - Version bumped to 1.0.10.

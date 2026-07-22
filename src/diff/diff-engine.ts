@@ -213,7 +213,10 @@ export class DiffEngine {
                     // Convert all 'td' in this new header row to 'th'
                     firstRow.querySelectorAll('td').forEach(td => {
                         const th = doc.createElement('th');
-                        th.innerHTML = td.innerHTML;
+                        // Safely transfer all child nodes from td to th
+                        while (td.firstChild) {
+                            th.appendChild(td.firstChild);
+                        }
                         // Copy attributes if needed, but usually stripped is better
                         Array.from(td.attributes).forEach(attr => th.setAttribute(attr.name, attr.value));
                         td.parentNode?.replaceChild(th, td);
@@ -257,7 +260,10 @@ export class DiffEngine {
                 // If strikethrough is >50% of the heading, convert to paragraph
                 if (strikeTextLength > headingText.length * 0.5) {
                     const p = doc.createElement('p');
-                    p.innerHTML = heading.innerHTML;
+                    // Safely transfer child nodes
+                    while (heading.firstChild) {
+                        p.appendChild(heading.firstChild);
+                    }
                     headingsToReplace.push({ heading, paragraph: p });
                 }
             }
@@ -343,7 +349,10 @@ export class DiffEngine {
         doc.querySelectorAll('li h1, li h2, li h3, li h4, li h5, li h6').forEach(h => {
             // Replace heading with just its content (already has strong inside usually)
             const span = doc.createElement('span');
-            span.innerHTML = h.innerHTML;
+            // Safely transfer child nodes
+            while (h.firstChild) {
+                span.appendChild(h.firstChild);
+            }
             h.parentNode?.replaceChild(span, h);
         });
 

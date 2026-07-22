@@ -427,7 +427,7 @@ export class ConfluenceSyncService {
         return { confluenceUrl };
     }
 
-    private handleError(error: any): void {
+    private handleError(error: unknown): void {
         if (error instanceof ConfluenceApiError) {
             if (error.status === 401) {
                 new Notice('❌ Authentication failed. Check your API token in Settings.', 8000);
@@ -444,7 +444,8 @@ export class ConfluenceSyncService {
                 new Notice(`❌ Confluence error: ${error.message}`, 8000);
             }
         } else {
-            new Notice(`❌ Error: ${error.message}`, 8000);
+            const message = error instanceof Error ? error.message : String(error);
+            new Notice(`❌ Error: ${message}`, 8000);
         }
 
         this.logger.error('Confluence sync error', error);

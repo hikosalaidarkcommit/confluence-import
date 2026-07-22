@@ -120,18 +120,16 @@ function buildDiffLine(line1: string | undefined, line2: string | undefined, cha
         const diffs = diffWords(line2, line1);
         for (const part of diffs) {
             if (part.removed) continue;
-            const span = document.createElement('span');
+            const span = fragment.createEl('span');
             span.textContent = part.value || '\u00A0';
             if (part.added) {
                 span.classList.add(charClass);
             }
-            fragment.appendChild(span);
         }
     } else if (line1 !== undefined) {
-        const span = document.createElement('span');
+        const span = fragment.createEl('span');
         span.textContent = line1 || '\u00A0';
         span.classList.add(charClass);
-        fragment.appendChild(span);
     }
 
     return fragment;

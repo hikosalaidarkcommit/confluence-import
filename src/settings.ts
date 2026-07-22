@@ -24,7 +24,10 @@ export class ConfluenceSettingsTab extends PluginSettingTab {
         const { containerEl } = this;
 
         containerEl.empty();
-        containerEl.createEl('h2', { text: 'Confluence Page Import Settings' });
+        
+        new Setting(containerEl)
+            .setName('Confluence Page Import Settings')
+            .setHeading();
 
         containerEl.createEl('p', {
             text: 'ℹ Base URL is required. For security, sync only sends credentials to this host — notes whose confluence-url points elsewhere are rejected.',
@@ -112,7 +115,9 @@ export class ConfluenceSettingsTab extends PluginSettingTab {
                 }));
 
 
-        containerEl.createEl('h3', { text: 'Advanced Options' });
+        new Setting(containerEl)
+            .setName('Advanced Options')
+            .setHeading();
 
         new Setting(containerEl)
             .setName('Enable debug logging')

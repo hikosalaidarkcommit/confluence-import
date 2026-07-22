@@ -349,5 +349,43 @@ describe('Escape cleanup: conservative removal only', () => {
         const md = runTurndown(html);
         expect(typeof md).toBe('string');
         expect(md).not.toContain('snake case');
+        expect(md).not.toContain('snake case');
     });
 });
+
+// ---------------------------------------------------------------------------
+// Conversion Fidelity (Post-Refactor)
+// ---------------------------------------------------------------------------
+describe('Conversion Fidelity: Safe DOM refactor verification', () => {
+    function runConversion(html: string): string {
+        const engine = new DiffEngine() as any;
+        return engine.turndownCleanHtml(engine.preprocessStorageToCleanHtml(html));
+    }
+
+    test('promotes first row to thead/th safely', () => {
+        const html = '<table><tr><td>Header</td></tr><tr><td>Data</td></tr></table>';
+        const md = runConversion(html);
+        // GFM table must have header
+        expect(md).toContain('| Header |');
+        expect(md).toContain('| --- |');
+        expect(md).toContain('| Data |');
+    });
+
+    test('converts strikethrough heading to paragraph safely', () => {
+        const html = '<h1><del>Struck Heading</del></h1>';
+        const md = runConversion(html);
+        // Heading should be gone, paragraph with ~~ used
+        expect(md).not.toMatch(/^# /);
+        expect(md).toContain('~~Struck Heading~~');
+    });
+
+    test('converts list item headings to bold safely', () => {
+        const html = '<ul><li><h3>Item Heading</h3></li></ul>';
+        const md = runConversion(html);
+        // Bullet should exist, but no # heading inside.
+        // Turndown defaults to * for bullets.
+        expect(md).toMatch(/^\* +Item Heading/m);
+        expect(md).not.toContain('###');
+    });
+});
+

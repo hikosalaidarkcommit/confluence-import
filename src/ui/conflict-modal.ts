@@ -48,12 +48,7 @@ export class ConflictResolutionModal extends Modal {
         });
 
         // Container for the diff view — scrollable, keyboard-accessible
-        const container = contentEl.createDiv({ cls: 'full-file-editor-container' });
-        container.style.maxHeight = '500px';
-        container.style.overflow = 'auto';
-        container.style.border = '1px solid var(--background-modifier-border)';
-        container.style.borderRadius = '4px';
-        container.style.marginBottom = '16px';
+        const container = contentEl.createDiv({ cls: 'file-diff__preview-container' });
 
         const diffView = new FileDiffView({
             container,
