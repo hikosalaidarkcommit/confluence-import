@@ -24,7 +24,7 @@ export class ConfluenceSettingsTab extends PluginSettingTab {
         const { containerEl } = this;
 
         containerEl.empty();
-        containerEl.createEl('h2', { text: 'Confluence Import Settings' });
+        containerEl.createEl('h2', { text: 'Confluence Page Import Settings' });
 
         containerEl.createEl('p', {
             text: 'ℹ Base URL is required. For security, sync only sends credentials to this host — notes whose confluence-url points elsewhere are rejected.',

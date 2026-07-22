@@ -1,9 +1,9 @@
-# Confluence Import (Obsidian Plugin)
+# Confluence Page Import (Obsidian Plugin)
 
 A plugin that pulls Confluence page content into your Obsidian notes, with
 difference detection and local conflict resolution.
 
-> **⚠ Breaking behavior change**: Earlier versions offered a "Push to
+> **⚠ Breaking behavior change**: Earlier versions (pre-1.0.8) offered a "Push to
 > Confluence" action that uploaded your note to Confluence. This has been
 > removed. **Sync is now strictly one-way: Confluence → Obsidian.** The plugin
 > has no remote-write capability at all — the code that could update pages or
@@ -51,11 +51,11 @@ difference detection and local conflict resolution.
 ### From Community Plugins
 1. Open Obsidian Settings > Community Plugins
 2. Turn off "Restricted mode"
-3. Click "Browse" and search for "Confluence Import"
+3. Click "Browse" and search for "Confluence Page Import"
 4. Click Install and then Enable
 
 ### Manual Installation
-1. Get the release archive `confluence-import-1.0.8.zip` (or the three
+1. Get the release archive `confluence-import-1.0.9.zip` (or the three
    files `main.js`, `manifest.json`, `styles.css`).
 2. Create a folder `confluence-import` in your vault's `.obsidian/plugins/` directory.
 3. Extract/put the three files flat in that folder.
@@ -69,7 +69,7 @@ difference detection and local conflict resolution.
    - Create a token and copy it.
 
 2. **Configure Plugin**:
-   - Open Obsidian Settings -> Confluence Import.
+   - Open Obsidian Settings -> Confluence Page Import.
    - Enter your **Confluence Base URL** (required — credentials are only sent
      to this exact protocol + host, e.g. `https://mycompany.atlassian.net`;
      `http` downgrades are blocked).
@@ -101,7 +101,7 @@ difference detection and local conflict resolution.
 2. **Import from Confluence** (manual, user-triggered):
    - Right-click the note in the File Explorer or Editor.
    - Select **Import from Confluence**.
-   - Or use the Command Palette: `Confluence Import: Import current note from Confluence`.
+   - Or use the Command Palette: `Confluence Page Import: Import current note from Confluence`.
    - Or click the sync ribbon icon.
 
    > Note: syncing only happens when you trigger it. There is no automatic or

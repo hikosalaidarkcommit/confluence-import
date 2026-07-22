@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
+### Changed
+- **Plugin renamed to "Confluence Page Import"**: the previous name "Confluence Import" collided with an existing plugin in the Obsidian Community Plugins directory. The unique ID `confluence-import` remains unchanged. All UI labels, command prefixes, and documentation updated to the new display name.
+- Version bumped to 1.0.9 to reflect the manifest identity change.
+
+## [1.0.8] - 2026-07-22
 ### Changed (plugin identity — BREAKING for pre-release installs)
 - Plugin rebranded for Obsidian Community Plugin submission: id `obsidian-confluence-sync` → **`confluence-import`** (new ids may not contain "obsidian"; `confluence-sync` is already taken), name `Confluence Sync` → **`Confluence Import`**. Manifest description rewritten action-first. Package name and release artifact renamed accordingly (`confluence-import-1.0.8.zip`); installation folder is now `.obsidian/plugins/confluence-import`.
 - Command id `push-to-confluence` (a legacy compatibility string) replaced by **`import-from-confluence`** with display name "Import current note from Confluence". Since the plugin has never been published under the new identity, no hotkey migration is needed; users of pre-release builds must rebind hotkeys once.
@@ -23,6 +28,14 @@ All notable changes to this project will be documented in this file.
 - Primary action is **Pull & Replace** (replaces the local note body with the Confluence version in full; `confluence-version` updated only after a successful write; other frontmatter properties preserved). Secondary action is **Cancel (Keep Local)** (zero writes, version marker untouched).
 - The preview's diff region is keyboard-scrollable with `role="region"` and an aria-label for screen readers.
 ### Added
+- Large-page guardrail: warn once per sync if the remote page is > 1MB, but do not block.
+- Diff computing moved to modal opening phase: avoids potentially heavy string allocations during the background fetch phase.
+- `syncsInFlight` guard: prevents concurrent syncs on the same file from interleaving writes or opening multiple modals.
+- Stale-file protection: at apply time, the plugin re-reads the file and aborts if it was modified externally while the preview was open.
+- Unicode support for Cloud auth: email/API tokens containing multi-byte characters are encoded correctly to Base64.
+- Specific error handling for HTTP 429 (Rate Limit).
+- Response shape validation for Confluence API data.
+- Scheme-downgrade prevention: blocks sync if a note URL uses `http` while settings use `https`.
 - Empty-remote protection: if the Confluence page converts to an empty or whitespace-only body, the pull is aborted with a clear notice instead of blanking the note; the preview stays open.
 - Large-page notice: syncing a Confluence page whose content exceeds 1 MB shows a one-time warning that the sync may take longer and use extra memory. The sync is never blocked.
 - External-change protection: if the note is modified while the preview dialog is open, Apply is aborted with a clear notice, nothing is overwritten, and the dialog stays open for retry.

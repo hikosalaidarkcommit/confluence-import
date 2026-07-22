@@ -1,5 +1,5 @@
 /**
- * Plugin identity contract tests (Confluence Import rebrand).
+ * Plugin identity contract tests (Confluence Page Import rebrand).
  *
  * Locks the public identity used for Obsidian Community Plugin submission:
  *  - manifest id/name/description rules (no "obsidian" in id, unique name)
@@ -22,18 +22,19 @@ describe('manifest identity', () => {
         expect(manifest.id).toMatch(/^[a-z0-9-]+$/);
     });
 
-    test('name is Confluence Import', () => {
-        expect(manifest.name).toBe('Confluence Import');
+    test('name is Confluence Page Import', () => {
+        expect(manifest.name).toBe('Confluence Page Import');
     });
 
     test('description is action-oriented, ≤250 chars, pull-only wording', () => {
         expect(manifest.description.length).toBeLessThanOrEqual(250);
         expect(manifest.description).toMatch(/^Import /);
+        expect(manifest.description.endsWith('.')).toBe(true);
         expect(manifest.description.toLowerCase()).not.toContain('push');
     });
 
     test('version/minAppVersion/desktop contract intact', () => {
-        expect(manifest.version).toBe('1.0.8');
+        expect(manifest.version).toBe('1.0.9');
         expect(manifest.minAppVersion).toBe('1.4.4');
         expect(manifest.isDesktopOnly).toBe(true);
     });

@@ -277,7 +277,7 @@ export class ConfluenceSyncService {
         const configured = (this.settings.baseUrl || '').trim();
         if (!configured) {
             throw new Error(
-                'Confluence Base URL is not configured. Set it in Settings → Confluence Import ' +
+                'Confluence Base URL is not configured. Set it in Settings → Confluence Page Import ' +
                 'so the plugin only sends credentials to your own Confluence host.'
             );
         }

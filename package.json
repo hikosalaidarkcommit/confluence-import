@@ -1,6 +1,6 @@
 {
   "name": "confluence-import",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Import Confluence pages into Obsidian notes (one-way pull) with a read-only diff preview before anything is written.",
   "main": "main.js",
   "scripts": {

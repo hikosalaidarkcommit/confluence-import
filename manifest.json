@@ -1,7 +1,7 @@
 {
   "id": "confluence-import",
-  "name": "Confluence Import",
-  "version": "1.0.8",
+  "name": "Confluence Page Import",
+  "version": "1.0.9",
   "minAppVersion": "1.4.4",
   "description": "Import Confluence pages into Obsidian notes (one-way pull) with a read-only diff preview before anything is written.",
   "author": "hikosalaidarkcommit",

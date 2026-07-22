@@ -2,7 +2,7 @@
 
 **Document Version**: 4.0
 **Last Updated**: 2026-07-21
-**Applies To**: Confluence Import — Obsidian Plugin (pull-only, read-only preview)
+**Applies To**: Confluence Page Import — Obsidian Plugin (pull-only, read-only preview)
 
 ---
 

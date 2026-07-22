@@ -1,4 +1,4 @@
-# Contributing to Confluence Import
+# Contributing to Confluence Page Import
 
 ## Development Setup
 
