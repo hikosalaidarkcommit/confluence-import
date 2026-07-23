@@ -1,13 +1,29 @@
 # Confluence Page Import (Obsidian Plugin)
 
-A plugin that pulls Confluence page content into your Obsidian notes, with
-difference detection and local conflict resolution.
+**Confluence Page Import is an Obsidian plugin that imports Confluence pages
+into local Markdown notes.** Each import is manual and strictly one-way —
+content flows from Confluence to your vault, and the plugin never writes to
+Confluence. Before anything touches your note, a read-only diff preview shows
+exactly what would change; you then choose **Pull & Replace** (take the
+Confluence version) or **Cancel (Keep Local)** (change nothing). Conversion
+from Confluence storage format to Markdown happens inside the plugin — no
+external tools such as Pandoc or command-line converters are required.
 
-> **⚠ Breaking behavior change**: Earlier versions (pre-1.0.8) offered a "Push to
-> Confluence" action that uploaded your note to Confluence. This has been
-> removed. **Sync is now strictly one-way: Confluence → Obsidian.** The plugin
-> has no remote-write capability at all — the code that could update pages or
-> upload attachments has been deleted from the plugin, not merely disabled.
+## Who is this for?
+
+- **Technical teams** who keep working notes in Obsidian but whose team
+  documentation lives in Confluence — import specs, runbooks, or meeting
+  pages next to your own notes and refresh them on demand.
+- **Knowledge workers** who want a local, searchable, offline-readable
+  Markdown copy of specific Confluence pages they reference often.
+- **Enterprise evaluators** who need a tool with a verifiable safety story:
+  read-only against Confluence by construction, credential host/protocol
+  guards, metadata-only logging, published security policy, and attested
+  release artifacts.
+
+If you need to publish notes *to* Confluence, this plugin is intentionally
+the wrong tool — it has no write capability (see
+[docs/COMPARISON.md](docs/COMPARISON.md) for workflow alternatives).
 
 ## Features
 
@@ -66,9 +82,11 @@ difference detection and local conflict resolution.
 ## Setup Guide
 
 1. **Get your API Token**:
-   - Go to Confluence.
-   - Click your Profile picture -> Settings -> Personal Access Tokens.
-   - Create a token and copy it.
+   - **Confluence Cloud (atlassian.net)**: create an API token from your
+     Atlassian account — see the official guide,
+     [Manage API tokens for your Atlassian account](https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/).
+   - **Self-hosted Confluence**: click your Profile picture → Settings →
+     Personal Access Tokens, create a token, and copy it.
 
 2. **Configure Plugin**:
    - Open Obsidian Settings -> Confluence Page Import.
@@ -196,6 +214,26 @@ plugin folder. Privacy and safety guarantees:
 - **"The Confluence page appears empty after conversion"**: the pull was
   aborted to protect your note — check the page content on Confluence.
 - **Network Error**: Check your internet connection.
+
+## Documentation
+
+- [FAQ](docs/FAQ.md) — direct answers: does it modify Confluence, background
+  sync, mobile, credentials storage, formatting limits, and more
+- [Troubleshooting](docs/TROUBLESHOOTING.md) — error messages and fixes
+- [Pull Preview Guide](docs/CONFLICT_RESOLUTION_GUIDE.md) — how the diff
+  preview and Pull & Replace / Cancel work
+- [Workflow comparison](docs/COMPARISON.md) — this plugin vs copy/paste,
+  export/conversion pipelines, and publishing tools
+- [Docs index](docs/INDEX.md) — current docs vs historical design archive
+
+## Version History Notes
+
+> **Pre-1.0.8 behavior change**: very early versions offered a "Push to
+> Confluence" action that uploaded notes to Confluence. That capability was
+> removed entirely in 1.0.8 — the code paths that could update pages or
+> upload attachments were deleted, not merely disabled. Since then the
+> plugin has been strictly one-way (Confluence → local note). See
+> [CHANGELOG.md](CHANGELOG.md) for the full history.
 
 ## Development
 

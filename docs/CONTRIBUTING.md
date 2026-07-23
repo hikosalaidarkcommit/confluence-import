@@ -97,3 +97,20 @@ dependencies weekly.
 3. Run `npm run package` (tests + build + deterministic zip + verification).
 4. Run `npm run sbom` to regenerate the SBOM.
 5. Commit and Tag.
+
+## Documentation Content Rules
+
+All user-facing docs (README, FAQ, TROUBLESHOOTING, COMPARISON, llms.txt)
+follow the rules in [INDEX.md](INDEX.md#documentation-content-rules):
+
+- Describe only shipped behavior; mark future work explicitly.
+- Never claim encryption, SSO, compliance certifications, automatic sync,
+  bulk import, offline mirroring, or mobile support.
+- Historical documents keep their Deprecated banner and INDEX entry.
+- External links must be official (Atlassian/Obsidian) and verified.
+- `llms.txt` stays plain factual text — no structured-data tricks or
+  invented statistics.
+
+The docs integrity test suite (`tests/unit/docs-integrity.test.ts`) enforces
+relative-link validity, the forbidden-claim list, llms.txt discipline, and
+that docs changes never touch `manifest.json`.

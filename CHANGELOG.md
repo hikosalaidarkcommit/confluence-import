@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+### Added (documentation & discovery — no runtime change)
+- Documentation index (`docs/INDEX.md`) separating current docs from the historical design archive, plus contributor content rules (factual claims only; forbidden-claim list; verified external links only).
+- Current-facing `docs/FAQ.md`, `docs/TROUBLESHOOTING.md`, and an objective `docs/COMPARISON.md` comparing workflow categories (manual import with diff preview vs copy/paste vs export/conversion pipelines vs publishing tools) without naming competitors.
+- Root `llms.txt`: plain factual capability/non-capability summary with canonical repository links (no structured-data tricks, crawler directives, or invented statistics).
+- `docs/GEO_EVALUATION.md`: 15 natural-language evaluation prompts and a monthly citation-accuracy scorecard against a canonical fact list (no baseline claimed).
+- `package.json` keywords (obsidian-plugin, confluence, markdown, knowledge-management, one-way-import, diff-preview, atlassian, documentation, import, notes) and homepage; version/description/dependencies unchanged.
+- Docs integrity test suite: relative-link checker, forbidden-claim checker, llms.txt discipline (plain text, canonical URLs), and a manifest-untouched lock.
+### Changed (documentation)
+- README opens with a first-200-words summary answering what the plugin is, who it serves, direction (Confluence → local note), manual/one-way/no-write guarantees, the diff preview, and the no-external-Pandoc/CLI fact; adds a factual "Who is this for?" section and a Documentation section linking FAQ/Troubleshooting/Comparison/Index.
+- The pre-1.0.8 push-removal notice moved from the top of the README into a "Version History Notes" section (historical context, unchanged facts).
+- Setup guide links the official Atlassian API-token documentation and Obsidian's community-plugins help page (both verified).
+
 ## [1.0.16] - 2026-07-23
 ### Fixed
 - **Narrow frontmatter values safely**: Fixed a community-review warning (`@typescript-eslint/no-unsafe-assignment`) by explicitly typing indexed reads from Obsidian's `FrontMatterCache` as `unknown` before runtime validation. This ensures honest type safety when retrieving the `confluence-url` property from notes.

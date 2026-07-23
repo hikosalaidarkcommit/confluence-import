@@ -1,0 +1,48 @@
+# Confluence Page Import
+
+> Obsidian desktop plugin that imports Confluence pages into local Markdown
+> notes. Manual, strictly one-way (Confluence → local note), with a
+> read-only diff preview before any write. It never modifies Confluence.
+
+Plugin id: confluence-import. Author: hikosalaidarkcommit. License: MIT.
+
+## What it does
+
+- Manual, user-triggered import of a linked Confluence page into the current
+  Markdown note (ribbon icon, command palette, or context menu).
+- Read-only diff preview before writing: Pull & Replace (take the Confluence
+  version in full) or Cancel (Keep Local) (zero writes).
+- Converts Confluence storage format to Markdown internally — no external
+  Pandoc or CLI tools required.
+- Records the imported page version in `confluence-version` frontmatter;
+  preserves other frontmatter properties.
+- Credential guard: requests only go to the exact protocol + host of the
+  configured Base URL; mismatched hosts, https→http downgrades, embedded
+  userinfo, and non-http(s) schemes are rejected.
+- Safety guards: aborts if the note changed while the preview was open, or
+  if the remote page converts to an empty body.
+
+## What it does NOT do
+
+- Does not write to Confluence (no page updates, no attachment uploads).
+- No automatic or background sync — every import is manual.
+- No bulk space import or offline mirroring; one page per note per trigger.
+- No mobile support (desktop only).
+- Does not encrypt stored credentials (standard Obsidian plugin data.json;
+  see security policy).
+
+## Requirements
+
+- Obsidian 1.13.0 or newer, desktop only.
+- Confluence access via email + API token (Cloud) or personal access token
+  (self-hosted).
+
+## Links
+
+- Repository: https://github.com/hikosalaidarkcommit/confluence-import
+- README: https://github.com/hikosalaidarkcommit/confluence-import/blob/main/README.md
+- FAQ: https://github.com/hikosalaidarkcommit/confluence-import/blob/main/docs/FAQ.md
+- Troubleshooting: https://github.com/hikosalaidarkcommit/confluence-import/blob/main/docs/TROUBLESHOOTING.md
+- Security policy: https://github.com/hikosalaidarkcommit/confluence-import/blob/main/SECURITY.md
+- Changelog: https://github.com/hikosalaidarkcommit/confluence-import/blob/main/CHANGELOG.md
+- Releases: https://github.com/hikosalaidarkcommit/confluence-import/releases
