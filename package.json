@@ -47,7 +47,7 @@
   "dependencies": {
     "@types/diff": "^7.0.2",
     "diff": "^8.0.3",
-    "turndown": "^7.1.1",
+    "turndown": "^7.2.4",
     "turndown-plugin-gfm": "^1.0.2"
   },
   "homepage": "https://github.com/hikosalaidarkcommit/confluence-import"
