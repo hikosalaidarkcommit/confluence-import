@@ -30,6 +30,13 @@ beforeAll(() => {
         this.appendChild(el);
         return el;
     };
+    proto.createSpan = function (opts?: any) {
+        const el = document.createElement('span');
+        if (opts?.text) el.textContent = opts.text;
+        if (opts?.cls) el.className = opts.cls;
+        this.appendChild(el);
+        return el;
+    };
     // Mock global createEl
     (global as any).createEl = function (tag: string, opts?: any) {
         const el = document.createElement(tag);
@@ -37,6 +44,8 @@ beforeAll(() => {
         if (opts?.cls) el.className = opts.cls;
         return el;
     };
+    (global as any).createDiv = function () { return document.createElement('div'); };
+    (global as any).createSpan = function () { return document.createElement('span'); };
 });
 
 describe('ConflictResolutionModal UI', () => {

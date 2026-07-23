@@ -1,35 +1,9 @@
-// @ts-ignore
 import TurndownService from 'turndown';
-// @ts-ignore
-import * as TurndownPluginGfm from 'turndown-plugin-gfm';
-
-/**
- * Honest local type declarations for Turndown and its GFM plugin
- * to satisfy strict type checking and scanner requirements.
- */
-interface TurndownPlugin {
-    (service: TurndownInstance): void;
-}
-
-const gfm = (TurndownPluginGfm.gfm || TurndownPluginGfm) as TurndownPlugin;
+import { gfm } from 'turndown-plugin-gfm';
 
 import { DiffResult } from '../models';
 import { normalizeMarkdown } from '../utils/markdown-normalizer';
 import { PluginLogger } from '../utils/logger';
-
-/**
- * Partial type definitions for Turndown rules to satisfy safety checks.
- */
-interface TurndownRule {
-    filter: string | string[] | ((node: HTMLElement, options: unknown) => boolean);
-    replacement: (content: string, node: HTMLElement, options: unknown) => string;
-}
-
-interface TurndownInstance {
-    addRule(name: string, rule: TurndownRule): void;
-    use(plugin: TurndownPlugin): void;
-    turndown(html: string | Node): string;
-}
 
 const CALLOUT_TITLE_MAX_LENGTH = 200;
 
@@ -315,7 +289,7 @@ export class DiffEngine {
             blankReplacement: function (_content: string, _node: Node) {
                 return '\n\n';
             }
-        }) as unknown as TurndownInstance;
+        });
 
         turndownService.addRule('paragraph', {
             filter: 'p',
@@ -327,7 +301,7 @@ export class DiffEngine {
         turndownService.use(gfm);
 
         turndownService.addRule('strikethrough', {
-            filter: function (node: HTMLElement, _options: unknown) {
+            filter: function (node: HTMLElement) {
                 return (
                     node.nodeName === 'DEL' ||
                     node.nodeName === 'S' ||

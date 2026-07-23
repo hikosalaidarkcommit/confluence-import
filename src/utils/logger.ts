@@ -113,7 +113,8 @@ export function sanitizeLogData(data: unknown, depth = 0, seen?: WeakSet<object>
         return out;
     }
 
-    return String(data as never);
+    // Exhaustive fallback — every remaining primitive stringifies safely.
+    return String(data);
 }
 
 /**

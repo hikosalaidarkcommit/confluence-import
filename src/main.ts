@@ -1,7 +1,7 @@
 import { Plugin, TFile, Notice, MarkdownView } from 'obsidian';
 import { ConfluenceSettingsTab, ConfluenceSyncPluginInterface } from './settings';
 import { ConfluenceSyncService } from './services/sync-service';
-import { DEFAULT_SETTINGS, ConfluenceSettings } from './models';
+import { ConfluenceSettings, parseStoredSettings } from './models';
 
 import { PluginLogger } from './utils/logger';
 
@@ -47,7 +47,19 @@ export default class ConfluenceSyncPlugin extends Plugin implements ConfluenceSy
         );
 
         // Add settings tab
-        this.addSettingTab(new ConfluenceSettingsTab(this.app, this));
+        const settingsTab = new ConfluenceSettingsTab(this.app, this);
+        this.addSettingTab(settingsTab);
+
+        // Command mirror of the settings "Test Connection" action.
+        this.addCommand({
+            id: 'test-confluence-connection',
+            name: 'Test Confluence connection',
+            callback: () => {
+                settingsTab.runConnectionTest().catch((err: unknown) => {
+                    this.logger.error('Connection test failed', err);
+                });
+            }
+        });
 
         // Add ribbon icon
         this.addRibbonIcon('cloud-download', 'Import from Confluence', () => {
@@ -145,7 +157,9 @@ export default class ConfluenceSyncPlugin extends Plugin implements ConfluenceSy
     }
 
     async loadSettings(): Promise<void> {
-        this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+        // loadData() returns untyped JSON — validate every field at runtime
+        // (wrong-typed/unknown fields fall back to DEFAULT_SETTINGS).
+        this.settings = parseStoredSettings(await this.loadData());
     }
 
     async saveSettings(): Promise<void> {

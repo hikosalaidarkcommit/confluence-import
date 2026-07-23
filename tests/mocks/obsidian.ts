@@ -62,12 +62,18 @@ export class PluginSettingTab {
     }
 }
 export class Setting { }
-/** Type-only mirror of Obsidian 1.13's declarative settings item. */
+/** Type-only mirror of Obsidian 1.13's declarative settings item (incl. groups/action/render rows). */
 export type SettingDefinitionItem = {
-    name: string;
+    name?: string;
     desc?: string;
     aliases?: string[];
+    type?: 'group' | 'list';
+    heading?: string;
+    items?: SettingDefinitionItem[];
     control?: { type: string; key: string; defaultValue?: unknown; placeholder?: string };
+    action?: (el?: unknown, index?: number) => void;
+    disabled?: boolean | (() => boolean);
+    render?: (setting: unknown, group?: unknown) => void | (() => void);
 };
 export class FileSystemAdapter {
     private _basePath: string;

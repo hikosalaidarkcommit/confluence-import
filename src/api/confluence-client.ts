@@ -188,18 +188,29 @@ export class ConfluenceApiClient {
   }
 
   /**
-   * Make authenticated request using Obsidian requestUrl
+   * Make authenticated request using Obsidian requestUrl.
+   *
+   * Takes a narrow, fully typed option shape (method/headers/body only)
+   * so no unsafe casts are needed when building `RequestUrlParam`.
    */
-  private async request(url: string, options: RequestInit): Promise<unknown> {
+  private async request(
+    url: string,
+    options: {
+      method?: string;
+      headers?: Record<string, string>;
+      body?: string | ArrayBuffer;
+    }
+  ): Promise<unknown> {
     const headers: Record<string, string> = {
       'Authorization': this.authHeader,
       'Accept': 'application/json',
     };
 
     if (options.headers) {
-      const customHeaders = options.headers as Record<string, string>;
-      for (const [key, value] of Object.entries(customHeaders)) {
-        headers[key] = value;
+      for (const [key, value] of Object.entries(options.headers)) {
+        if (typeof value === 'string') {
+          headers[key] = value;
+        }
       }
     }
 
@@ -210,9 +221,9 @@ export class ConfluenceApiClient {
     // Transform options for requestUrl
     const reqOptions: RequestUrlParam = {
       url: url,
-      method: options.method || 'GET',
+      method: options.method ?? 'GET',
       headers: headers,
-      body: (options.body as string | ArrayBuffer | undefined),
+      body: options.body,
       throw: false // We check status manually
     };
 

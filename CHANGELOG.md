@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.15] - 2026-07-23
+### Changed
+- Settings tab fully migrated to the declarative settings API: the deprecated `display()` override is removed. All six settings render from `getSettingDefinitions()` (grouped under Connection and Diagnostics), with the API token as a masked password input and Test Connection as an action row. Text values persist via the existing 400 ms debounce; toggles save immediately. A new command **"Test Confluence connection"** mirrors the settings action.
+- Community-review type-safety cleanup: proper module declarations for `turndown`/`turndown-plugin-gfm` (no `@ts-ignore`, no casts), typed request options in the Confluence client (no `RequestInit` casts), `structuredPatch` typed via `@types/diff` directly, and removal of unnecessary type assertions in the sync service and logger. TypeScript target/lib raised to ES2020 (matching Obsidian 1.13's Electron), making `trimStart`/`trimEnd` fully typed; esbuild output target aligned to ES2020.
+- Stored settings are now validated at runtime when loaded (`loadData()` is untyped): only correctly-typed fields merge over defaults; invalid or unknown fields fall back safely and are never logged.
+- Diff preview uses `createDiv`/`createSpan` helpers instead of `createEl('div'/'span')`.
+
 ## [1.0.14] - 2026-07-23
 ### Added
 - Declarative settings via `PluginSettingTab.getSettingDefinitions()` (Obsidian 1.13+): all six settings (Base URL, user email, API token, default space key, debug logging, page ID cache) are now discoverable through Obsidian's settings search. The rendered settings UI (including debounced saves and Test Connection) is unchanged.

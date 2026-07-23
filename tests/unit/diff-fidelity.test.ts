@@ -47,6 +47,16 @@ beforeAll(() => {
         applyOpts(el, opts);
         return el;
     };
+    (global as any).createDiv = function (opts?: any) {
+        const el = document.createElement('div');
+        applyOpts(el, opts);
+        return el;
+    };
+    (global as any).createSpan = function (opts?: any) {
+        const el = document.createElement('span');
+        applyOpts(el, opts);
+        return el;
+    };
     function applyOpts(el: HTMLElement, opts?: any) {
         if (!opts) return;
         if (typeof opts === 'string') {

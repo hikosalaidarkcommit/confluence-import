@@ -16,6 +16,30 @@ export const DEFAULT_SETTINGS: ConfluenceSettings = {
     enablePageIdCache: true
 };
 
+/**
+ * Runtime validator for persisted plugin data (`loadData()` returns
+ * unknown/any — the stored JSON may come from an older plugin version or
+ * be hand-edited). Only fields with the CORRECT type are merged onto
+ * DEFAULT_SETTINGS; anything invalid falls back to the default. Never
+ * throws and never logs values (the payload includes the API token).
+ */
+export function parseStoredSettings(raw: unknown): ConfluenceSettings {
+    const settings: ConfluenceSettings = { ...DEFAULT_SETTINGS };
+    if (typeof raw !== 'object' || raw === null) {
+        return settings;
+    }
+    const source = raw as Record<string, unknown>;
+
+    if (typeof source.baseUrl === 'string') settings.baseUrl = source.baseUrl;
+    if (typeof source.apiToken === 'string') settings.apiToken = source.apiToken;
+    if (typeof source.userEmail === 'string') settings.userEmail = source.userEmail;
+    if (typeof source.defaultSpace === 'string') settings.defaultSpace = source.defaultSpace;
+    if (typeof source.enableDebugLogging === 'boolean') settings.enableDebugLogging = source.enableDebugLogging;
+    if (typeof source.enablePageIdCache === 'boolean') settings.enablePageIdCache = source.enablePageIdCache;
+
+    return settings;
+}
+
 export interface NoteConfluenceMetadata {
     confluenceUrl?: string;
     // confluencePageId?: string; // Optional direct mapping

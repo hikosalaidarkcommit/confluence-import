@@ -412,7 +412,8 @@ export class ConfluenceSyncService {
         confluenceUrl?: string;
     }> {
         const cache = this.app.metadataCache.getFileCache(file);
-        const frontmatter = cache?.frontmatter as Record<string, unknown> | undefined;
+        // FrontMatterCache already has an index signature; no assertion needed.
+        const frontmatter = cache?.frontmatter;
 
         if (!frontmatter) {
             throw new Error('No frontmatter found in note');

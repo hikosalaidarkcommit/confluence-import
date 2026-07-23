@@ -14,14 +14,6 @@ export interface FileDiff {
     remoteLines: string[];
 }
 
-interface Patch {
-    hunks: Array<{
-        oldStart: number;
-        newStart: number;
-        lines: string[];
-    }>;
-}
-
 /**
  * Computes structured differences between local and remote content.
  * Uses markdown normalization to ignore syntax differences (like * vs - for lists).
@@ -47,13 +39,14 @@ export function computeFileDiff(localContent: string, remoteContent: string): Fi
     const normalizedLocal = normalizeMarkdown(localContent);
     const normalizedRemote = normalizeMarkdown(remoteContent);
 
-    // Compare normalized versions
+    // Compare normalized versions — structuredPatch is fully typed
+    // (ParsedDiff) by @types/diff; no assertion needed.
     const patch = structuredPatch(
         'local',
         'remote',
         normalizedLocal,
         normalizedRemote
-    ) as unknown as Patch;
+    );
 
     const differences: DifferenceBlock[] = [];
 
@@ -120,7 +113,7 @@ export function computeFileDiff(localContent: string, remoteContent: string): Fi
  * Builds an inline word-diff span for a line.
  */
 function buildDiffLine(line1: string | undefined, line2: string | undefined, charClass: string): HTMLElement {
-    const fragment = createEl('div');
+    const fragment = createDiv();
 
     if (line1 === undefined || line1.length === 0) {
         fragment.textContent = line1 || '\u00A0'; // non-breaking space for empty lines
@@ -128,14 +121,14 @@ function buildDiffLine(line1: string | undefined, line2: string | undefined, cha
         const diffs = diffWords(line2, line1);
         for (const part of diffs) {
             if (part.removed) continue;
-            const span = fragment.createEl('span');
+            const span = fragment.createSpan();
             span.textContent = part.value || '\u00A0';
             if (part.added) {
                 span.classList.add(charClass);
             }
         }
     } else if (line1 !== undefined) {
-        const span = fragment.createEl('span');
+        const span = fragment.createSpan();
         span.textContent = line1 || '\u00A0';
         span.classList.add(charClass);
     }

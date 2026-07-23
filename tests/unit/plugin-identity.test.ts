@@ -35,7 +35,7 @@ describe('manifest identity', () => {
     });
 
     test('version/minAppVersion/desktop contract intact', () => {
-        expect(manifest.version).toBe('1.0.14');
+        expect(manifest.version).toBe('1.0.15');
         // 1.13.0 is required by the declarative settings API
         // (PluginSettingTab.getSettingDefinitions, @since 1.13.0).
         expect(manifest.minAppVersion).toBe('1.13.0');
@@ -48,6 +48,7 @@ describe('manifest identity', () => {
         // historical requirement stays 1.4.4 and must never be rewritten.
         expect(versions['1.0.13']).toBe('1.4.4');
         expect(versions['1.0.14']).toBe('1.13.0');
+        expect(versions['1.0.15']).toBe('1.13.0');
     });
 
     test('package.json name matches identity and versions.json covers current version', () => {
@@ -93,21 +94,21 @@ describe('no stale identity in active source', () => {
 });
 
 describe('settings heading compliance', () => {
-    test('src/settings.ts headings are functional and neutral', () => {
+    test('declarative group headings are functional and neutral', () => {
         const content = read('src/settings.ts');
-        
-        // Match all .setName('...') followed by .setHeading()
-        const headingMatches = [...content.matchAll(/\.setName\(['"](.*?)['"]\)\s*\.setHeading\(\)/g)];
-        
+
+        // Declarative API: group headings are `heading: '...'` fields.
+        const headingMatches = [...content.matchAll(/heading:\s*['"](.*?)['"]/g)];
+
         expect(headingMatches.length).toBeGreaterThan(0);
-        
+
         for (const match of headingMatches) {
             const label = match[1];
             // No heading should include the plugin name
             expect(label).not.toContain('Confluence Page Import');
             // No heading should include the word "Settings" (case-insensitive)
             expect(label.toLowerCase()).not.toContain('settings');
-            
+
             // Expected functional labels
             expect(['Connection', 'Diagnostics']).toContain(label);
         }

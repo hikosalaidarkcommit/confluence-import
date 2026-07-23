@@ -35,7 +35,9 @@ const context = await esbuild.context({
         "@lezer/highlight",
         "@lezer/lr"],
     format: "cjs",
-    target: "es2018",
+    // ES2020 matches tsconfig; Obsidian 1.13 ships Electron with Chromium
+    // well past ES2020 support, so this is safe for minAppVersion 1.13.0.
+    target: "es2020",
     logLevel: "info",
     sourcemap: prod ? false : "inline",
     treeShaking: true,

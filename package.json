@@ -1,6 +1,6 @@
 {
   "name": "confluence-import",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "description": "Import Confluence pages as local notes (one-way pull) with a read-only diff preview before anything is written.",
   "main": "main.js",
   "scripts": {
