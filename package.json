@@ -46,7 +46,7 @@
   },
   "dependencies": {
     "@types/diff": "^7.0.2",
-    "diff": "^8.0.3",
+    "diff": "^9.0.0",
     "turndown": "^7.1.1",
     "turndown-plugin-gfm": "^1.0.2"
   },
