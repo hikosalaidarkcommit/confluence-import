@@ -1,4 +1,3 @@
-// @ts-ignore
 import { requestUrl, RequestUrlParam } from 'obsidian';
 import { PageContent } from '../models';
 
@@ -8,25 +7,31 @@ export interface ConfluenceApiConfig {
   apiToken: string;
 }
 
+/** A Confluence page version must be a finite positive integer. */
+function isValidVersionNumber(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v) && Number.isInteger(v) && v > 0;
+}
+
 /**
  * Encode a string to Base64 in a Unicode-safe way.
  * `btoa` only handles Latin-1 (code points 0–255). When the email or API
  * token contains multi-byte characters (e.g. Chinese, emoji) it throws
  * "The string to be encoded contains characters outside of the Latin1 range".
- * We percent-encode the UTF-8 bytes first, then decode the percent-encoding
- * back to individual bytes that `btoa` can handle.
+ * We use TextEncoder to get UTF-8 bytes, then convert them to a binary string
+ * that btoa can handle. This avoids the deprecated `unescape` function.
  */
-/** A Confluence page version must be a finite positive integer. */
-function isValidVersionNumber(v: unknown): boolean {
-  return typeof v === 'number' && Number.isFinite(v) && Number.isInteger(v) && v > 0;
-}
-
 function toBase64(str: string): string {
   try {
-    return btoa(unescape(encodeURIComponent(str)));
+    const bytes = new TextEncoder().encode(str);
+    let binary = '';
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
   } catch {
-    // encodeURIComponent/unescape should never fail for valid JS strings,
-    // but guard against any future engine quirk.
+    // TextEncoder/btoa should never fail for valid JS strings in modern
+    // environments, but guard against any future engine quirk.
     throw new Error(
       'Confluence credentials contain characters that cannot be encoded. ' +
       'Please verify your email and API token in Settings.'
@@ -74,13 +79,18 @@ export class ConfluenceApiClient {
    * API changes, or non-JSON bodies that requestUrl silently returns as null.
    */
   private assertPageShape(data: unknown): asserts data is PageContent {
+    const d = data as Record<string, unknown>;
+    const body = d?.body as Record<string, unknown> | undefined;
+    const storage = body?.storage as Record<string, unknown> | undefined;
+    const version = d?.version as Record<string, unknown> | undefined;
+
     if (
       data == null ||
       typeof data !== 'object' ||
-      typeof (data as any).id !== 'string' ||
-      typeof (data as any).title !== 'string' ||
-      typeof (data as any).body?.storage?.value !== 'string' ||
-      !isValidVersionNumber((data as any).version?.number)
+      typeof d.id !== 'string' ||
+      typeof d.title !== 'string' ||
+      typeof storage?.value !== 'string' ||
+      !isValidVersionNumber(version?.number)
     ) {
       throw new ConfluenceApiError(
         0,
@@ -97,13 +107,17 @@ export class ConfluenceApiClient {
    * because search callers use expand without body.
    */
   private assertSearchResultShape(entry: unknown): void {
+    const e = entry as Record<string, unknown>;
+    const version = e?.version as Record<string, unknown> | undefined;
+    const space = e?.space as Record<string, unknown> | undefined;
+
     if (
       entry == null ||
       typeof entry !== 'object' ||
-      typeof (entry as any).id !== 'string' ||
-      typeof (entry as any).title !== 'string' ||
-      !isValidVersionNumber((entry as any).version?.number) ||
-      typeof (entry as any).space?.key !== 'string'
+      typeof e.id !== 'string' ||
+      typeof e.title !== 'string' ||
+      !isValidVersionNumber(version?.number) ||
+      typeof space?.key !== 'string'
     ) {
       throw new ConfluenceApiError(
         0,
@@ -138,17 +152,18 @@ export class ConfluenceApiClient {
 
     // SECURITY/robustness: validate shape before callers touch fields.
     // Raw response bodies are never included in the error.
-    if (response == null || typeof response !== 'object' || !Array.isArray(response.results)) {
+    const res = response as Record<string, unknown>;
+    if (response == null || typeof response !== 'object' || !Array.isArray(res.results)) {
       throw new ConfluenceApiError(
         0,
         'Invalid response',
         'The Confluence search API returned an unexpected response shape (missing results array).'
       );
     }
-    for (const entry of response.results) {
+    for (const entry of res.results) {
       this.assertSearchResultShape(entry);
     }
-    return response;
+    return response as { results: PageContent[]; size: number };
   }
 
   // NOTE: This client is intentionally READ-ONLY. The plugin's sync is
@@ -165,8 +180,9 @@ export class ConfluenceApiClient {
       const url = `${this.baseUrl}/rest/api/content?limit=1`;
       await this.request(url, { method: 'GET' });
       return true;
-    } catch (e) {
-      console.error('Connection test failed', e);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      console.error('Connection test failed', message);
       return false;
     }
   }
@@ -174,12 +190,18 @@ export class ConfluenceApiClient {
   /**
    * Make authenticated request using Obsidian requestUrl
    */
-  private async request(url: string, options: RequestInit): Promise<any> {
+  private async request(url: string, options: RequestInit): Promise<unknown> {
     const headers: Record<string, string> = {
       'Authorization': this.authHeader,
       'Accept': 'application/json',
-      ...(options.headers as Record<string, string> || {})
     };
+
+    if (options.headers) {
+      const customHeaders = options.headers as Record<string, string>;
+      for (const [key, value] of Object.entries(customHeaders)) {
+        headers[key] = value;
+      }
+    }
 
     if (!headers['Content-Type']) {
       headers['Content-Type'] = 'application/json';
@@ -190,7 +212,7 @@ export class ConfluenceApiClient {
       url: url,
       method: options.method || 'GET',
       headers: headers,
-      body: options.body as string | ArrayBuffer,
+      body: (options.body as string | ArrayBuffer | undefined),
       throw: false // We check status manually
     };
 
@@ -208,7 +230,7 @@ export class ConfluenceApiClient {
       );
     }
 
-    return response.json;
+    return response.json as unknown;
   }
 }
 

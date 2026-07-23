@@ -14,7 +14,7 @@ export class ConfluenceUrlParser {
 
             // Type 1: Modern URL with page ID
             // Pattern: /wiki/spaces/{spaceKey}/pages/{pageId}/{pageTitle}
-            const modernMatch = url.match(/\/wiki\/spaces\/([^\/]+)\/pages\/(\d+)/);
+            const modernMatch = url.match(new RegExp('/wiki/spaces/([^/]+)/pages/(\\d+)'));
             if (modernMatch) {
                 return {
                     baseUrl,
@@ -26,7 +26,7 @@ export class ConfluenceUrlParser {
 
             // Type 2: Legacy URL with pageId parameter
             // Pattern: /pages/viewpage.action?pageId={pageId}
-            const legacyMatch = url.match(/pageId=(\d+)/);
+            const legacyMatch = url.match(new RegExp('pageId=(\\d+)'));
             if (legacyMatch) {
                 return {
                     baseUrl,
@@ -37,7 +37,7 @@ export class ConfluenceUrlParser {
 
             // Type 3: Display URL (needs resolution)
             // Pattern: /display/{spaceKey}/{pageTitle}
-            const displayMatch = url.match(/\/display\/([^\/]+)\/(.+?)(?:\?|$)/);
+            const displayMatch = url.match(new RegExp('/display/([^/]+)/(.+?)(?:\\?|$)'));
             if (displayMatch) {
                 const rawTitle = displayMatch[2];
                 // Decode URL-encoded title and replace + with spaces

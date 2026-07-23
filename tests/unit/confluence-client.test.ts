@@ -37,7 +37,12 @@ describe('ConfluenceApiClient', () => {
          */
         function decodeBasicHeader(header: string): string {
             const b64 = header.replace(/^Basic /, '');
-            return decodeURIComponent(escape(atob(b64)));
+            const binary = atob(b64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return new TextDecoder().decode(bytes);
         }
 
         test('ASCII credentials: encoded correctly and round-trips', () => {
@@ -46,7 +51,7 @@ describe('ConfluenceApiClient', () => {
                 email: 'user@example.com',
                 apiToken: 'token123',
             });
-            const header = (client as any).authHeader as string;
+            const header = (client as unknown as { authHeader: string }).authHeader;
             expect(header).toMatch(/^Basic /);
             expect(decodeBasicHeader(header)).toBe('user@example.com:token123');
         });
@@ -63,8 +68,9 @@ describe('ConfluenceApiClient', () => {
                 email: '用戶@example.com',
                 apiToken: 'token123',
             });
-            const header = (client as any).authHeader as string;
+            const header = (client as unknown as { authHeader: string }).authHeader;
             expect(header).toMatch(/^Basic /);
+            // Verify round-trip decoding
             expect(decodeBasicHeader(header)).toBe('用戶@example.com:token123');
         });
 
@@ -80,7 +86,7 @@ describe('ConfluenceApiClient', () => {
                 email: 'user@example.com',
                 apiToken: '日本語トークン🔑',
             });
-            expect(decodeBasicHeader((client as any).authHeader)).toBe(
+            expect(decodeBasicHeader((client as unknown as { authHeader: string }).authHeader)).toBe(
                 'user@example.com:日本語トークン🔑'
             );
         });
@@ -91,7 +97,7 @@ describe('ConfluenceApiClient', () => {
                 email: 'user@example.com',
                 apiToken: 'pat-token',
             });
-            expect((client as any).authHeader).toBe('Bearer pat-token');
+            expect((client as unknown as { authHeader: string }).authHeader).toBe('Bearer pat-token');
         });
     });
 
@@ -107,7 +113,7 @@ describe('ConfluenceApiClient', () => {
             });
         }
 
-        async function getPageWith(responseBody: any) {
+        async function getPageWith(responseBody: unknown) {
             const client = makeClient();
             requestUrl.mockResolvedValueOnce({
                 status: 200,

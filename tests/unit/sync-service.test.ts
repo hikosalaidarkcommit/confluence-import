@@ -3,7 +3,8 @@ import { DiffEngine } from '../../src/diff/diff-engine';
 import { ConfluenceApiClient, ConfluenceApiError } from '../../src/api/confluence-client';
 import { CachedPageResolver } from '../../src/api/page-resolver';
 import { ConflictResolutionModal } from '../../src/ui/conflict-modal';
-import { DiffResult } from '../../src/models';
+import { ConfluenceSettings, DiffResult } from '../../src/models';
+import { PluginLogger } from '../../src/utils/logger';
 
 // Mock only the ConfluenceApiClient constructor while preserving ConfluenceApiError
 // as the real class. This allows instanceof checks in handleError to work correctly

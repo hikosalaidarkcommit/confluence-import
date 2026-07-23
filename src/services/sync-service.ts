@@ -1,4 +1,4 @@
-import { App, TFile, Notice, Vault } from 'obsidian';
+import { App, TFile, Notice } from 'obsidian';
 import { ConfluenceSettings, DiffResult } from '../models';
 import { ConfluenceUrlParser } from '../api/url-parser';
 import { ConfluenceApiClient, ConfluenceApiError } from '../api/confluence-client';
@@ -154,7 +154,7 @@ export class ConfluenceSyncService {
 
             // Step 4: Get local content
             const localMarkdown = await this.app.vault.read(file);
-            const { frontmatter, content: localBody } = this.extractFrontmatter(localMarkdown);
+            const { content: localBody } = this.extractFrontmatter(localMarkdown);
 
             // Step 5: Perform diff
             new Notice('🔄 Checking for conflicts...');
@@ -351,7 +351,7 @@ export class ConfluenceSyncService {
     }
 
     private async updateVersionInFrontmatter(file: TFile, newVersion: number): Promise<void> {
-        await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+        await this.app.fileManager.processFrontMatter(file, (frontmatter: Record<string, unknown>) => {
             frontmatter['confluence-version'] = newVersion;
         });
         this.logger.info(`Updated local frontmatter version to ${newVersion}`);
@@ -412,7 +412,7 @@ export class ConfluenceSyncService {
         confluenceUrl?: string;
     }> {
         const cache = this.app.metadataCache.getFileCache(file);
-        const frontmatter = cache?.frontmatter;
+        const frontmatter = cache?.frontmatter as Record<string, unknown> | undefined;
 
         if (!frontmatter) {
             throw new Error('No frontmatter found in note');
@@ -420,7 +420,7 @@ export class ConfluenceSyncService {
 
         const confluenceUrl = frontmatter['confluence-url'];
 
-        if (!confluenceUrl) {
+        if (typeof confluenceUrl !== 'string') {
             throw new Error('No confluence-url found in note properties');
         }
 
