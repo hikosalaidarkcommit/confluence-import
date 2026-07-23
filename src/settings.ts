@@ -1,5 +1,5 @@
 import { App, PluginSettingTab, Setting, Plugin, Notice } from 'obsidian';
-import { ConfluenceSettings, DEFAULT_SETTINGS } from './models';
+import { ConfluenceSettings } from './models';
 import { ConfluenceApiClient } from './api/confluence-client';
 
 export interface ConfluenceSyncPluginInterface extends Plugin {
@@ -18,6 +18,39 @@ export class ConfluenceSettingsTab extends PluginSettingTab {
     constructor(app: App, plugin: ConfluenceSyncPluginInterface) {
         super(app, plugin);
         this.plugin = plugin;
+    }
+
+    /**
+     * Implement the declarative settings API (Obsidian 1.13+) so that settings
+     * are discoverable via Obsidian's settings search.
+     */
+    getSettingDefinitions() {
+        return {
+            'baseUrl': {
+                name: 'Confluence Base URL',
+                type: 'text',
+            },
+            'userEmail': {
+                name: 'Confluence User Email',
+                type: 'text',
+            },
+            'apiToken': {
+                name: 'Confluence API Token',
+                type: 'text',
+            },
+            'defaultSpace': {
+                name: 'Default Space Key',
+                type: 'text',
+            },
+            'enableDebugLogging': {
+                name: 'Enable debug logging',
+                type: 'toggle',
+            },
+            'enablePageIdCache': {
+                name: 'Cache page IDs',
+                type: 'toggle',
+            }
+        };
     }
 
     display(): void {

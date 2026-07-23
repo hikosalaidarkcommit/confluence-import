@@ -1,5 +1,6 @@
 import { PluginLogger, sanitizeLogData } from '../../src/utils/logger';
 import { MemoryDataAdapter } from '../mocks/obsidian';
+import { DataAdapter } from 'obsidian';
 
 const PLUGIN_DIR = '.obsidian/plugins/confluence-import';
 const LOG_PATH = `${PLUGIN_DIR}/debug.log`;
@@ -7,7 +8,7 @@ const LOG_PATH = `${PLUGIN_DIR}/debug.log`;
 function makeLogger(overrides: Record<string, unknown> = {}) {
     const adapter = new MemoryDataAdapter();
     const settings = { enableDebugLogging: true, ...overrides } as any;
-    const logger = new PluginLogger(settings, adapter as any, PLUGIN_DIR);
+    const logger = new PluginLogger(settings, adapter as unknown as DataAdapter, PLUGIN_DIR);
     return { logger, adapter, logPath: logger.getLogPath() };
 }
 
@@ -187,19 +188,5 @@ describe('PluginLogger (DataAdapter, async queue, rotation, lifecycle)', () => {
 
         expect(adapter.files.get(LOG_PATH)).toBe('');
         expect(adapter.files.has(LOG_PATH + '.1')).toBe(false);
-    });
-
-    test('legacy string constructor form: no I/O, single console.error, never throws', async () => {
-        const settings = { enableDebugLogging: true } as any;
-        const logger = new PluginLogger(settings, PLUGIN_DIR, '/legacy/vault/path');
-        const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
-
-        logger.info('goes nowhere');
-        await expect(logger.flush()).resolves.toBeUndefined();
-        logger.info('still nowhere');
-        await expect(logger.flush()).resolves.toBeUndefined();
-
-        expect(consoleSpy).toHaveBeenCalledTimes(1);
-        consoleSpy.mockRestore();
     });
 });

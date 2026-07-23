@@ -36,7 +36,7 @@ describe('manifest identity', () => {
 
     test('version/minAppVersion/desktop contract intact', () => {
         expect(manifest.version).toBe('1.0.13');
-        expect(manifest.minAppVersion).toBe('1.4.4');
+        expect(manifest.minAppVersion).toBe('1.13.0');
         expect(manifest.isDesktopOnly).toBe(true);
     });
 

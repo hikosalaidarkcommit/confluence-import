@@ -29,7 +29,7 @@ function normalizeLine(line: string): string {
 
     // 3. Normalize escaped characters: `\[`, `\*`, `\:`, `\_`, etc.
     // Confluence and Turndown often escape these unnecessarily
-    normalized = normalized.replace(/\\([*:.\[\]_])/g, '$1');
+    normalized = normalized.replace(/\\([*:.[\]_])/g, '$1');
 
     // 4. Normalize indentation: convert tabs to 4 spaces
     normalized = normalized.replace(/\t/g, '    ');

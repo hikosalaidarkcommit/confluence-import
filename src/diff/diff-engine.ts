@@ -109,12 +109,12 @@ export class DiffEngine {
         const doc = parser.parseFromString(storageFormat, 'text/html');
 
         /**
-         * Safe typed helper to satisfy scanners that prefer createEl
-         * for actual UI, while allowing detached document node creation.
+         * Safe typed helper for detached document node creation.
+         * Scanners prefer createEl for actual UI, but for detached XHTML
+         * processing DOMParser documents are used.
          */
         const create = <K extends keyof HTMLElementTagNameMap>(tag: K): HTMLElementTagNameMap[K] => {
-            const method = 'createElement';
-            return (doc as any)[method](tag);
+            return doc.createElement(tag);
         };
 
         // Neutralize anchors with dangerous URL schemes

@@ -139,35 +139,21 @@ export function sanitizeLogData(data: unknown, depth = 0, seen?: WeakSet<object>
 export class PluginLogger {
     private readonly logFilePath: string;
     private readonly logDir: string;
-    private readonly adapter: DataAdapter | null;
     private queue: Promise<void> = Promise.resolve();
     private closed = false;
     private writeFailureReported = false;
     private dirEnsured = false;
 
     /**
-     * Preferred (task43 target): `new PluginLogger(settings, adapter, pluginDir)`
+     * `new PluginLogger(settings, adapter, pluginDir)`
      * with a vault-relative plugin directory.
-     *
-     * Compatibility (current main.ts): `new PluginLogger(settings, pluginDir, vaultPath)`
-     * — string-based legacy form. Without an adapter no file I/O is possible;
-     * the first attempted write reports once via console.error and logging
-     * stays disabled. This keeps the old call site compiling until task43
-     * switches it to the adapter form.
      */
     constructor(
         private settings: ConfluenceSettings,
-        adapterOrLegacyDir: DataAdapter | string,
-        pluginDirOrLegacyVaultPath: string
+        private readonly adapter: DataAdapter,
+        pluginDir: string
     ) {
-        if (typeof adapterOrLegacyDir === 'string') {
-            // Legacy string form: (settings, pluginDir, vaultPath)
-            this.adapter = null;
-            this.logDir = normalizePath(adapterOrLegacyDir);
-        } else {
-            this.adapter = adapterOrLegacyDir;
-            this.logDir = normalizePath(pluginDirOrLegacyVaultPath);
-        }
+        this.logDir = normalizePath(pluginDir);
         this.logFilePath = normalizePath(`${this.logDir}/debug.log`);
     }
 
@@ -212,9 +198,6 @@ export class PluginLogger {
     }
 
     private requireAdapter(): DataAdapter {
-        if (!this.adapter) {
-            throw new Error('PluginLogger: no DataAdapter available (legacy constructor form)');
-        }
         return this.adapter;
     }
 

@@ -1,4 +1,4 @@
-import { Plugin, TFile, Notice, FileSystemAdapter } from 'obsidian';
+import { Plugin, TFile, Notice, MarkdownView } from 'obsidian';
 import { ConfluenceSettingsTab, ConfluenceSyncPluginInterface } from './settings';
 import { ConfluenceSyncService } from './services/sync-service';
 import { DEFAULT_SETTINGS, ConfluenceSettings } from './models';
@@ -13,23 +13,29 @@ export default class ConfluenceSyncPlugin extends Plugin implements ConfluenceSy
     // Pending debounce timer for text-field settings saves.
     private _saveDebounceTimer: number | null = null;
 
-    async onload() {
+    /**
+     * Start the plugin initialization. Plugin.onload() expects a void return
+     * but allows async implementations. To satisfy scanners that might strictly
+     * check the base type contract, we handle initialization in a void-returning
+     * async chain.
+     */
+    onload(): void {
+        this.initializePlugin().catch((err: unknown) => {
+            console.error('[Confluence Page Import] Failed to initialize plugin', err);
+        });
+    }
+
+    private async initializePlugin(): Promise<void> {
         // Load settings
         await this.loadSettings();
 
-        // Initialize Logger using the public FileSystemAdapter API.
+        // Initialize Logger using the DataAdapter API.
         // manifest.dir is a documented optional field; fall back to a
-        // predictable path when the host doesn't populate it (e.g. unit tests).
+        // predictable path when the host doesn't populate it.
         const pluginDir = this.manifest.dir ?? `.obsidian/plugins/${this.manifest.id}`;
-        let vaultPath = '';
-        if (this.app.vault.adapter instanceof FileSystemAdapter) {
-            vaultPath = this.app.vault.adapter.getBasePath();
-        }
-        // When not on desktop (FileSystemAdapter unavailable), the logger path
-        // will be empty — PluginLogger falls back silently to console.error.
-
-        this.logger = new PluginLogger(this.settings, pluginDir, vaultPath);
-        this.logger.info('Plugin loaded');
+        
+        this.logger = new PluginLogger(this.settings, this.app.vault.adapter, pluginDir);
+        this.logger.info('Plugin loading');
 
         // Initialize sync service — created ONCE for the plugin's lifetime.
         // Settings are updated in-place via syncService.updateSettings() so
@@ -44,10 +50,12 @@ export default class ConfluenceSyncPlugin extends Plugin implements ConfluenceSy
         this.addSettingTab(new ConfluenceSettingsTab(this.app, this));
 
         // Add ribbon icon
-        this.addRibbonIcon('cloud-download', 'Import from Confluence', async () => {
+        this.addRibbonIcon('cloud-download', 'Import from Confluence', () => {
             const activeFile = this.app.workspace.getActiveFile();
             if (activeFile) {
-                await this.syncService.syncFromConfluence(activeFile);
+                this.syncService.syncFromConfluence(activeFile).catch((err: unknown) => {
+                    this.logger.error('Ribbon sync failed', err);
+                });
             } else {
                 new Notice('No active file to import into');
             }
@@ -62,7 +70,9 @@ export default class ConfluenceSyncPlugin extends Plugin implements ConfluenceSy
 
                 if (activeFile && activeFile.extension === 'md') {
                     if (!checking) {
-                        this.syncService.syncFromConfluence(activeFile);
+                        this.syncService.syncFromConfluence(activeFile).catch((err: unknown) => {
+                            this.logger.error('Command sync failed', err);
+                        });
                     }
                     return true;
                 }
@@ -79,8 +89,10 @@ export default class ConfluenceSyncPlugin extends Plugin implements ConfluenceSy
                         item
                             .setTitle('Import from Confluence')
                             .setIcon('cloud-download')
-                            .onClick(async () => {
-                                await this.syncService.syncFromConfluence(file);
+                            .onClick(() => {
+                                this.syncService.syncFromConfluence(file).catch((err: unknown) => {
+                                    this.logger.error('File-menu sync failed', err);
+                                });
                             });
                     });
                 }
@@ -88,25 +100,36 @@ export default class ConfluenceSyncPlugin extends Plugin implements ConfluenceSy
         );
 
         this.registerEvent(
-            this.app.workspace.on('editor-menu', (menu, editor, view) => {
-                // MarkdownView has a `file` property; guard with a runtime check
-                // because the type definitions don't expose it on EditorMenuContext.
-                const mdFile = (view as any).file;
-                if (mdFile instanceof TFile) {
-                    menu.addItem((item) => {
-                        item
-                            .setTitle('Import from Confluence')
-                            .setIcon('cloud-download')
-                            .onClick(async () => {
-                                await this.syncService.syncFromConfluence(mdFile);
-                            });
-                    });
+            this.app.workspace.on('editor-menu', (menu, _editor, view) => {
+                // Narrow view to MarkdownView to safely access the file property.
+                if (view instanceof MarkdownView) {
+                    const mdFile = view.file;
+                    if (mdFile instanceof TFile) {
+                        menu.addItem((item) => {
+                            item
+                                .setTitle('Import from Confluence')
+                                .setIcon('cloud-download')
+                                .onClick(() => {
+                                    this.syncService.syncFromConfluence(mdFile).catch((err: unknown) => {
+                                        this.logger.error('Editor-menu sync failed', err);
+                                    });
+                                });
+                        });
+                    }
                 }
             })
         );
+
+        this.logger.info('Plugin loaded');
     }
 
-    async onunload() {
+    onunload(): void {
+        this.finalizePlugin().catch((err: unknown) => {
+            console.error('[Confluence Page Import] Error during unload', err);
+        });
+    }
+
+    private async finalizePlugin(): Promise<void> {
         this.logger.info('Plugin unloading');
         // Flush any pending settings write.
         if (this._saveDebounceTimer !== null) {
@@ -121,11 +144,11 @@ export default class ConfluenceSyncPlugin extends Plugin implements ConfluenceSy
         await this.logger.close();
     }
 
-    async loadSettings() {
+    async loadSettings(): Promise<void> {
         this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     }
 
-    async saveSettings() {
+    async saveSettings(): Promise<void> {
         await this.saveData(this.settings);
         // Update the existing service in-place — this preserves the resolver
         // cache and the per-file in-flight guard across settings changes.
@@ -146,9 +169,11 @@ export default class ConfluenceSyncPlugin extends Plugin implements ConfluenceSy
         if (this._saveDebounceTimer !== null) {
             window.clearTimeout(this._saveDebounceTimer);
         }
-        this._saveDebounceTimer = window.setTimeout(async () => {
+        this._saveDebounceTimer = window.setTimeout(() => {
             this._saveDebounceTimer = null;
-            await this.saveSettings();
+            this.saveSettings().catch((err: unknown) => {
+                this.logger.error('Debounced save failed', err);
+            });
         }, delayMs);
     }
 }
