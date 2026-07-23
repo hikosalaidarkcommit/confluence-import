@@ -3,6 +3,9 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
+### Changed
+- Debug logger rewritten to use Obsidian's public `DataAdapter` API (`exists`/`stat`/`mkdir`/`append`/`rename`/`remove`) with vault-relative paths via `normalizePath` — no more Node `fs`/`path` access, eliminating the "Direct Filesystem Access" review warning. All I/O stays inside the vault (the plugin's own config folder). Queue ordering, 1 MB rotation to `debug.log.1`, single-failure reporting, and unload flush/close are preserved; `sanitizeLogData` is now fully typed over `unknown` with cycle/getter-exception guards.
+- Removed the `builtin-modules` dev dependency (flagged by plugin review); the esbuild config no longer marks Node builtins as externals since the bundle contains none.
 
 ## [1.0.13] - 2026-07-23
 ### Fixed

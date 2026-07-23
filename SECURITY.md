@@ -57,8 +57,9 @@ Confluence page content is converted to Markdown locally. Links with
 dangerous schemes (`javascript:`, `data:`, `vbscript:`, `file:`,
 `obsidian:`, and other non-http(s)/mailto schemes) are stripped during
 conversion, and macro titles are sanitized so remote authors cannot inject
-Markdown/callout structure. Debug logs contain metadata only (never page
-content, tokens, or emails).
+Markdown/callout structure. Debug logging is written through Obsidian's
+vault adapter API into the plugin's own folder — never outside the vault —
+and logs contain metadata only (never page content, tokens, or emails).
 
 ## Supply Chain & Release Integrity
 

@@ -1,6 +1,5 @@
+import { DataAdapter, normalizePath } from 'obsidian';
 import { ConfluenceSettings } from '../models';
-import * as path from 'path';
-import * as fs from 'fs';
 
 /**
  * Keys whose values must NEVER be written to the log file, regardless of
@@ -22,6 +21,7 @@ const CONTENT_KEY_FRAGMENTS = [
 
 const MAX_STRING_LENGTH = 200;      // hard cap for any logged string value
 const MAX_DEPTH = 4;                // recursion guard for nested payloads
+const MAX_ARRAY_ITEMS = 20;         // cap array expansion
 const MAX_LOG_FILE_BYTES = 1024 * 1024;      // 1MB active log bound
 const ROTATED_SUFFIX = '.1';                  // single rotated generation
 
@@ -41,14 +41,22 @@ function sanitizeUrlLike(value: string): string {
     }
 }
 
+function isPlainObjectLike(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
+}
+
 /**
  * Recursively sanitize a data payload for logging:
  * - sensitive keys → '[REDACTED]'
  * - content keys   → '[content: N chars]'
  * - URL-looking strings → origin+path only
  * - long strings truncated
- * */
-export function sanitizeLogData(data: unknown, depth = 0): unknown {
+ * - cycles/depth/array size bounded
+ *
+ * Fully typed on `unknown`: property access only happens after narrowing,
+ * and getter exceptions are contained per-property.
+ */
+export function sanitizeLogData(data: unknown, depth = 0, seen?: WeakSet<object>): unknown {
     if (data === null || data === undefined) return data;
     if (depth > MAX_DEPTH) return '[max depth]';
 
@@ -59,70 +67,123 @@ export function sanitizeLogData(data: unknown, depth = 0): unknown {
             : urlSanitized;
     }
     if (typeof data === 'number' || typeof data === 'boolean') return data;
+    if (typeof data === 'bigint') return data.toString();
+    if (typeof data === 'function' || typeof data === 'symbol') return `[${typeof data}]`;
 
     if (data instanceof Error) {
-        return { name: data.name, message: sanitizeLogData(data.message, depth + 1), stack: data.stack?.split('\n').slice(0, 8).join('\n') };
+        const stack: string | undefined = typeof data.stack === 'string'
+            ? data.stack.split('\n').slice(0, 8).join('\n')
+            : undefined;
+        return {
+            name: data.name,
+            message: sanitizeLogData(data.message, depth + 1),
+            stack,
+        };
+    }
+
+    // Cycle guard for objects/arrays.
+    const tracker = seen ?? new WeakSet<object>();
+    if (isPlainObjectLike(data)) {
+        if (tracker.has(data)) return '[circular]';
+        tracker.add(data);
     }
 
     if (Array.isArray(data)) {
-        return data.slice(0, 20).map(item => sanitizeLogData(item, depth + 1));
+        return data.slice(0, MAX_ARRAY_ITEMS).map(item => sanitizeLogData(item, depth + 1, tracker));
     }
 
-    if (typeof data === 'object') {
+    if (isPlainObjectLike(data)) {
         const out: Record<string, unknown> = {};
-        for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+        for (const key of Object.keys(data)) {
+            let value: unknown;
+            try {
+                value = data[key];
+            } catch {
+                out[key] = '[getter threw]';
+                continue;
+            }
             if (keyMatches(key, SENSITIVE_KEY_FRAGMENTS)) {
                 out[key] = '[REDACTED]';
             } else if (keyMatches(key, CONTENT_KEY_FRAGMENTS) && typeof value === 'string') {
                 out[key] = `[content: ${value.length} chars]`;
             } else {
-                out[key] = sanitizeLogData(value, depth + 1);
+                out[key] = sanitizeLogData(value, depth + 1, tracker);
             }
         }
         return out;
     }
 
-    return String(data);
+    return String(data as never);
 }
 
 /**
- * File logger with:
+ * Debug logger backed by Obsidian's public {@link DataAdapter} — no Node
+ * `fs`/`path` and no absolute filesystem paths. All I/O stays inside the
+ * vault (the plugin's own config directory).
+ *
+ * Features:
  * - metadata-only output (all payloads pass through sanitizeLogData)
- * - ordered async write queue (no sync I/O on the main thread after startup)
- * - size-bounded log file with single-generation rotation
+ * - ordered async write queue (each write chains onto the previous one)
+ * - size-bounded log file with single-generation rotation (debug.log → .1)
  * - flush()/close() for plugin unload
  *
- * Write failures are contained: they mark the logger unhealthy and log once
- * to console.error — they never produce unhandled rejections.
+ * Write failures are contained: they log once to console.error and never
+ * produce unhandled rejections.
+ *
+ * Integration contract (task43): construct as
+ *   `new PluginLogger(settings, app.vault.adapter, `${app.vault.configDir}/plugins/${manifest.id}`)`
+ * — `manifest.dir` may be used for the directory when populated. The path is
+ * vault-relative; no FileSystemAdapter instanceof check or base path needed,
+ * which also makes the logger mobile-safe by construction.
  */
 export class PluginLogger {
-    private logFilePath: string;
+    private readonly logFilePath: string;
+    private readonly logDir: string;
+    private readonly adapter: DataAdapter | null;
     private queue: Promise<void> = Promise.resolve();
     private closed = false;
     private writeFailureReported = false;
+    private dirEnsured = false;
 
+    /**
+     * Preferred (task43 target): `new PluginLogger(settings, adapter, pluginDir)`
+     * with a vault-relative plugin directory.
+     *
+     * Compatibility (current main.ts): `new PluginLogger(settings, pluginDir, vaultPath)`
+     * — string-based legacy form. Without an adapter no file I/O is possible;
+     * the first attempted write reports once via console.error and logging
+     * stays disabled. This keeps the old call site compiling until task43
+     * switches it to the adapter form.
+     */
     constructor(
         private settings: ConfluenceSettings,
-        pluginManifestDir: string,
-        vaultBasePath: string
+        adapterOrLegacyDir: DataAdapter | string,
+        pluginDirOrLegacyVaultPath: string
     ) {
-        // Construct absolute path to the log file in the plugin directory
-        this.logFilePath = path.join(vaultBasePath, pluginManifestDir, 'debug.log');
+        if (typeof adapterOrLegacyDir === 'string') {
+            // Legacy string form: (settings, pluginDir, vaultPath)
+            this.adapter = null;
+            this.logDir = normalizePath(adapterOrLegacyDir);
+        } else {
+            this.adapter = adapterOrLegacyDir;
+            this.logDir = normalizePath(pluginDirOrLegacyVaultPath);
+        }
+        this.logFilePath = normalizePath(`${this.logDir}/debug.log`);
     }
 
-    info(message: string, data?: unknown) {
+    info(message: string, data?: unknown): void {
         this.log('INFO', message, data);
     }
 
-    error(message: string, data?: unknown) {
+    error(message: string, data?: unknown): void {
         this.log('ERROR', message, data);
     }
 
-    warn(message: string, data?: unknown) {
+    warn(message: string, data?: unknown): void {
         this.log('WARN', message, data);
     }
 
-    private log(level: string, message: string, data?: unknown) {
+    private log(level: string, message: string, data?: unknown): void {
         if (!this.settings.enableDebugLogging || this.closed) return;
 
         const timestamp = new Date().toISOString();
@@ -139,10 +200,10 @@ export class PluginLogger {
 
         // Ordered async queue: each write chains onto the previous one.
         // The catch handler keeps the chain alive and prevents unhandled
-        // rejections from fs failures.
+        // rejections from adapter failures.
         this.queue = this.queue
             .then(() => this.writeWithRotation(logMessage))
-            .catch((err) => {
+            .catch((err: unknown) => {
                 if (!this.writeFailureReported) {
                     this.writeFailureReported = true;
                     console.error('[Confluence Page Import] Failed to write to debug log', err);
@@ -150,17 +211,37 @@ export class PluginLogger {
             });
     }
 
-    private async writeWithRotation(text: string): Promise<void> {
-        // Rotate when the active file would exceed the bound.
-        try {
-            const stat = await fs.promises.stat(this.logFilePath);
-            if (stat.size + text.length > MAX_LOG_FILE_BYTES) {
-                await fs.promises.rename(this.logFilePath, this.logFilePath + ROTATED_SUFFIX);
-            }
-        } catch {
-            // File does not exist yet — nothing to rotate.
+    private requireAdapter(): DataAdapter {
+        if (!this.adapter) {
+            throw new Error('PluginLogger: no DataAdapter available (legacy constructor form)');
         }
-        await fs.promises.appendFile(this.logFilePath, text);
+        return this.adapter;
+    }
+
+    private async ensureDir(): Promise<void> {
+        if (this.dirEnsured) return;
+        const adapter = this.requireAdapter();
+        const exists = await adapter.exists(this.logDir);
+        if (!exists) {
+            await adapter.mkdir(this.logDir);
+        }
+        this.dirEnsured = true;
+    }
+
+    private async writeWithRotation(text: string): Promise<void> {
+        const adapter = this.requireAdapter();
+        await this.ensureDir();
+        // Rotate when the active file would exceed the bound. stat() returns
+        // null when the file does not exist yet — nothing to rotate then.
+        const stat = await adapter.stat(this.logFilePath);
+        if (stat && stat.size + text.length > MAX_LOG_FILE_BYTES) {
+            const rotated = this.logFilePath + ROTATED_SUFFIX;
+            if (await adapter.exists(rotated)) {
+                await adapter.remove(rotated);
+            }
+            await adapter.rename(this.logFilePath, rotated);
+        }
+        await adapter.append(this.logFilePath, text);
     }
 
     /** Wait for all queued writes to land on disk. */
@@ -174,17 +255,22 @@ export class PluginLogger {
         await this.queue;
     }
 
-    clear() {
+    clear(): void {
         this.queue = this.queue
             .then(async () => {
-                await fs.promises.writeFile(this.logFilePath, '');
-                await fs.promises.rm(this.logFilePath + ROTATED_SUFFIX, { force: true });
+                await this.ensureDir();
+                await this.adapter.write(this.logFilePath, '');
+                const rotated = this.logFilePath + ROTATED_SUFFIX;
+                if (await this.adapter.exists(rotated)) {
+                    await this.adapter.remove(rotated);
+                }
             })
-            .catch((e) => {
+            .catch((e: unknown) => {
                 console.error('Failed to clear log', e);
             });
     }
 
+    /** Vault-relative path of the active log file. */
     getLogPath(): string {
         return this.logFilePath;
     }

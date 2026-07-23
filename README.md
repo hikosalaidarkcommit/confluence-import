@@ -147,6 +147,10 @@ plugin folder. Privacy and safety guarantees:
   sensitive fields are redacted before hitting disk.
 - **Bounded size**: the active log rotates to `debug.log.1` at 1 MB, keeping
   a single rotated generation.
+- **Vault-scoped storage**: the log lives in the plugin's own folder inside
+  your vault's `.obsidian` directory and is written exclusively through
+  Obsidian's vault adapter API — the plugin does not touch files outside
+  the vault.
 - Writes are asynchronous and flushed when the plugin unloads.
 
 ## Security & Privacy
