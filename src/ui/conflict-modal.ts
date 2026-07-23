@@ -1,4 +1,4 @@
-import { App, Modal, Notice } from 'obsidian';
+import { App, Modal } from 'obsidian';
 import { DiffResult } from '../models';
 import { FileDiffView } from './file-diff-view';
 
@@ -58,7 +58,7 @@ export class ConflictResolutionModal extends Modal {
                 try {
                     await this.onAccept();
                     this.close(); // Only close if successful
-                } catch (error) {
+                } catch {
                     // Error is handled by sync-service; modal stays open for retry or cancel.
                 }
             },

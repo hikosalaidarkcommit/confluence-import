@@ -19,6 +19,7 @@ beforeAll(() => {
     proto.createDiv = function (opts?: any) {
         const el = document.createElement('div');
         if (opts?.cls) el.className = opts.cls;
+        if (opts?.text) el.textContent = opts.text;
         this.appendChild(el);
         return el;
     };
@@ -27,6 +28,13 @@ beforeAll(() => {
         if (opts?.text) el.textContent = opts.text;
         if (opts?.cls) el.className = opts.cls;
         this.appendChild(el);
+        return el;
+    };
+    // Mock global createEl
+    (global as any).createEl = function (tag: string, opts?: any) {
+        const el = document.createElement(tag);
+        if (opts?.text) el.textContent = opts.text;
+        if (opts?.cls) el.className = opts.cls;
         return el;
     };
 });

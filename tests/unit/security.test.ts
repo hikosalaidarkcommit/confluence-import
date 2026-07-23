@@ -12,6 +12,12 @@ import { ConfluenceApiClient, ConfluenceApiError } from '../../src/api/confluenc
 import { ConfluenceSyncService } from '../../src/services/sync-service';
 import { requestUrl } from 'obsidian';
 
+// Mock TextEncoder for jsdom environment if missing
+if (typeof TextEncoder === 'undefined') {
+    const { TextEncoder } = require('util');
+    (global as any).TextEncoder = TextEncoder;
+}
+
 const mockLogger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as any;
 
 // ---------------------------------------------------------------------------

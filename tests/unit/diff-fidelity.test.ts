@@ -41,6 +41,12 @@ beforeAll(() => {
         this.appendChild(el);
         return el;
     };
+    // Mock global createEl
+    (global as any).createEl = function (tag: string, opts?: any) {
+        const el = document.createElement(tag);
+        applyOpts(el, opts);
+        return el;
+    };
     function applyOpts(el: HTMLElement, opts?: any) {
         if (!opts) return;
         if (typeof opts === 'string') {

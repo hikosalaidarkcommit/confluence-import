@@ -14,6 +14,14 @@ export interface FileDiff {
     remoteLines: string[];
 }
 
+interface Patch {
+    hunks: Array<{
+        oldStart: number;
+        newStart: number;
+        lines: string[];
+    }>;
+}
+
 /**
  * Computes structured differences between local and remote content.
  * Uses markdown normalization to ignore syntax differences (like * vs - for lists).
@@ -45,7 +53,7 @@ export function computeFileDiff(localContent: string, remoteContent: string): Fi
         'remote',
         normalizedLocal,
         normalizedRemote
-    );
+    ) as unknown as Patch;
 
     const differences: DifferenceBlock[] = [];
 
@@ -56,7 +64,7 @@ export function computeFileDiff(localContent: string, remoteContent: string): Fi
         // structuredPatch emits "\ No newline at end of file" marker lines;
         // they are metadata, not content, and break contiguous-block
         // detection and line-index math if left in.
-        const hunkLines = hunk.lines.filter(l => !l.startsWith('\\'));
+        const hunkLines = hunk.lines.filter((l: string) => !l.startsWith('\\'));
 
         for (let i = 0; i < hunkLines.length; i++) {
             const line = hunkLines[i];
@@ -80,11 +88,11 @@ export function computeFileDiff(localContent: string, remoteContent: string): Fi
                 // Count lines being changed
                 const localChangeCount = hunkLines
                     .slice(start, end + 1)
-                    .filter(l => l.startsWith('-'))
+                    .filter((l: string) => l.startsWith('-'))
                     .length;
                 const remoteChangeCount = hunkLines
                     .slice(start, end + 1)
-                    .filter(l => l.startsWith('+'))
+                    .filter((l: string) => l.startsWith('+'))
                     .length;
 
                 // Get ORIGINAL (non-normalized) lines for display
@@ -112,7 +120,7 @@ export function computeFileDiff(localContent: string, remoteContent: string): Fi
  * Builds an inline word-diff span for a line.
  */
 function buildDiffLine(line1: string | undefined, line2: string | undefined, charClass: string): HTMLElement {
-    const fragment = document.createElement('div');
+    const fragment = createEl('div');
 
     if (line1 === undefined || line1.length === 0) {
         fragment.textContent = line1 || '\u00A0'; // non-breaking space for empty lines
