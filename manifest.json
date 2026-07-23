@@ -1,7 +1,7 @@
 {
   "id": "confluence-import",
   "name": "Confluence Page Import",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "minAppVersion": "1.13.0",
   "description": "Import Confluence pages as local notes (one-way pull) with a read-only diff preview before anything is written.",
   "author": "hikosalaidarkcommit",

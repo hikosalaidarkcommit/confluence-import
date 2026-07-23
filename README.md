@@ -43,7 +43,9 @@ difference detection and local conflict resolution.
 
 ## Requirements
 
-- **Obsidian 1.4.4 or newer** (`minAppVersion` in the plugin manifest).
+- **Obsidian 1.13.0 or newer** (`minAppVersion` in the plugin manifest —
+  required by the declarative settings API that makes this plugin's settings
+  searchable).
 - **Desktop only** (the plugin uses desktop file APIs for logging).
 
 ## Installation
@@ -55,7 +57,7 @@ difference detection and local conflict resolution.
 4. Click Install and then Enable
 
 ### Manual Installation
-1. Get the release archive `confluence-import-1.0.13.zip` (or the three
+1. Get the release archive `confluence-import-1.0.14.zip` (or the three
    files `main.js`, `manifest.json`, `styles.css`).
 2. Create a folder `confluence-import` in your vault's `.obsidian/plugins/` directory.
 3. Extract/put the three files flat in that folder.

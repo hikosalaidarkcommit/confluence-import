@@ -2,7 +2,17 @@
 import TurndownService from 'turndown';
 // @ts-ignore
 import * as TurndownPluginGfm from 'turndown-plugin-gfm';
-const gfm: unknown = (TurndownPluginGfm as any).gfm || TurndownPluginGfm;
+
+/**
+ * Honest local type declarations for Turndown and its GFM plugin
+ * to satisfy strict type checking and scanner requirements.
+ */
+interface TurndownPlugin {
+    (service: TurndownInstance): void;
+}
+
+const gfm = (TurndownPluginGfm.gfm || TurndownPluginGfm) as TurndownPlugin;
+
 import { DiffResult } from '../models';
 import { normalizeMarkdown } from '../utils/markdown-normalizer';
 import { PluginLogger } from '../utils/logger';
@@ -17,7 +27,7 @@ interface TurndownRule {
 
 interface TurndownInstance {
     addRule(name: string, rule: TurndownRule): void;
-    use(plugin: unknown): void;
+    use(plugin: TurndownPlugin): void;
     turndown(html: string | Node): string;
 }
 
@@ -71,6 +81,18 @@ export function isSafeHref(rawHref: string): boolean {
     return false;
 }
 
+/**
+ * Safe style-attribute parsing to detect line-through decoration
+ * without using the restricted .style property on detached nodes.
+ */
+function hasLineThrough(node: HTMLElement): boolean {
+    const styleAttr = node.getAttribute('style');
+    if (!styleAttr) return false;
+    // Look for text-decoration: line-through with optional spaces, case-insensitive
+    // Matches: "text-decoration:line-through", "TEXT-DECORATION :  LINE-THROUGH", etc.
+    return /\btext-decoration\s*:\s*line-through\b/i.test(styleAttr);
+}
+
 export class DiffEngine {
     private logger?: PluginLogger;
 
@@ -100,24 +122,34 @@ export class DiffEngine {
     }
 
     private async convertStorageToMarkdown(storageFormat: string): Promise<string> {
+        // MEMORY: pre-processing returns a serialized string so the parsed
+        // DOM goes out of scope (and is collectable) BEFORE Turndown builds
+        // its own internal DOM. Passing the live node instead would keep
+        // three full-page representations alive at once on large pages.
         const cleanHtml = this.preprocessStorageToCleanHtml(storageFormat);
         return this.turndownCleanHtml(cleanHtml);
     }
 
+    /**
+     * Parse raw Confluence storage into a detached document, apply all DOM
+     * pre-processing, and serialize back to a string via XMLSerializer
+     * (no innerHTML access). Node creation goes through Obsidian's createEl
+     * with adoptNode; the remote DOM is never attached to the live document.
+     */
     private preprocessStorageToCleanHtml(storageFormat: string): string {
         const parser = new DOMParser();
         const doc = parser.parseFromString(storageFormat, 'text/html');
 
         /**
-         * Safe typed helper for detached document node creation.
-         * Scanners prefer createEl for actual UI, but for detached XHTML
-         * processing DOMParser documents are used.
+         * Helper to create nodes using Obsidian's createEl and safely
+         * adopting them into our processing document.
          */
         const create = <K extends keyof HTMLElementTagNameMap>(tag: K): HTMLElementTagNameMap[K] => {
-            return doc.createElement(tag);
+            const el = createEl(tag);
+            return doc.adoptNode(el);
         };
 
-        // Neutralize anchors with dangerous URL schemes
+        // 0. SECURITY: neutralize anchors with dangerous URL schemes
         doc.querySelectorAll('a[href]').forEach(anchor => {
             const href = anchor.getAttribute('href') || '';
             if (!isSafeHref(href)) {
@@ -259,11 +291,20 @@ export class DiffEngine {
             });
         });
 
-        return doc.body.innerHTML
+        // Serialize WITHOUT innerHTML: XMLSerializer is a standard DOM API.
+        // Turndown re-parses this string in its own scope, so the
+        // pre-processing document above can be garbage-collected first.
+        return new XMLSerializer()
+            .serializeToString(doc.body)
+            // Unwrap the <body> element and its serializer-added xmlns.
+            .replace(/^<body[^>]*>/i, '')
+            .replace(/<\/body>$/i, '')
+            // Final cleanup for tag names that may keep colon prefixes in
+            // some environments (same rules as the pre-refactor version).
             .replace(/<ac:([\w-]+)/gi, '<$1')
             .replace(/<\/ac:([\w-]+)/gi, '</$1')
             .replace(/<ri:([\w-]+)/gi, '<$1')
-            .replace(/\u003c\/ri:([\w-]+)/gi, '</$1');
+            .replace(/<\/ri:([\w-]+)/gi, '</$1');
     }
 
     private turndownCleanHtml(cleanHtml: string): string {
@@ -291,7 +332,7 @@ export class DiffEngine {
                     node.nodeName === 'DEL' ||
                     node.nodeName === 'S' ||
                     node.nodeName === 'STRIKE' ||
-                    (node.nodeName === 'SPAN' && node.style.textDecoration === 'line-through')
+                    (node.nodeName === 'SPAN' && hasLineThrough(node))
                 );
             },
             replacement: function (content: string) {

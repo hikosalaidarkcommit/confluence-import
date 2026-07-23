@@ -55,6 +55,11 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>');
 global.DOMParser = dom.window.DOMParser;
 global.Node = dom.window.Node;
 global.document = dom.window.document;
+// Obsidian exposes createEl (and DOM classes) as globals; the diff engine
+// uses them for detached node creation. Provide minimal equivalents.
+global.createEl = function (tag) { return dom.window.document.createElement(tag); };
+global.DocumentFragment = dom.window.DocumentFragment;
+global.XMLSerializer = dom.window.XMLSerializer;
 
 const { DiffEngine } = require(${JSON.stringify(enginePath)});
 

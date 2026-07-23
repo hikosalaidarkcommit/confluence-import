@@ -2,10 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [1.0.14] - 2026-07-23
+### Added
+- Declarative settings via `PluginSettingTab.getSettingDefinitions()` (Obsidian 1.13+): all six settings (Base URL, user email, API token, default space key, debug logging, page ID cache) are now discoverable through Obsidian's settings search. The rendered settings UI (including debounced saves and Test Connection) is unchanged.
 ### Changed
+- **Minimum Obsidian version raised to 1.13.0** (required by the declarative settings API). Historical `versions.json` mappings are preserved — 1.0.13 and earlier still map to their original minimum versions.
 - Debug logger rewritten to use Obsidian's public `DataAdapter` API (`exists`/`stat`/`mkdir`/`append`/`rename`/`remove`) with vault-relative paths via `normalizePath` — no more Node `fs`/`path` access, eliminating the "Direct Filesystem Access" review warning. All I/O stays inside the vault (the plugin's own config folder). Queue ordering, 1 MB rotation to `debug.log.1`, single-failure reporting, and unload flush/close are preserved; `sanitizeLogData` is now fully typed over `unknown` with cycle/getter-exception guards.
 - Removed the `builtin-modules` dev dependency (flagged by plugin review); the esbuild config no longer marks Node builtins as externals since the bundle contains none.
+- Storage pre-processing hardened for review compliance: detached-DOM node creation goes through Obsidian's `createEl` (adopted into the processing document), strikethrough detection reads the `style` attribute instead of the live `.style` object, and serialization uses `XMLSerializer` instead of `innerHTML` — while keeping the memory-friendly string hand-off to the Markdown converter.
+- Turndown and its GFM plugin are now typed through honest local declarations (no `any` casts) across the conversion pipeline.
 
 ## [1.0.13] - 2026-07-23
 ### Fixed

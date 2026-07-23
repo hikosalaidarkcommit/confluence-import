@@ -364,7 +364,11 @@ describe('Escape cleanup: conservative removal only', () => {
 // ---------------------------------------------------------------------------
 describe('Conversion Fidelity: Safe DOM refactor verification', () => {
     function runConversion(html: string): string {
-        const engine = new DiffEngine() as any;
+        interface ConversionInternals {
+            preprocessStorageToCleanHtml(storage: string): string;
+            turndownCleanHtml(cleanHtml: string): string;
+        }
+        const engine = new DiffEngine() as unknown as ConversionInternals;
         return engine.turndownCleanHtml(engine.preprocessStorageToCleanHtml(html));
     }
 

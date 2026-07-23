@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, Plugin, Notice } from 'obsidian';
+import { App, PluginSettingTab, Setting, Plugin, Notice, SettingDefinitionItem } from 'obsidian';
 import { ConfluenceSettings } from './models';
 import { ConfluenceApiClient } from './api/confluence-client';
 
@@ -21,36 +21,51 @@ export class ConfluenceSettingsTab extends PluginSettingTab {
     }
 
     /**
-     * Implement the declarative settings API (Obsidian 1.13+) so that settings
-     * are discoverable via Obsidian's settings search.
+     * Declarative settings (Obsidian 1.13+): makes every setting discoverable
+     * in Obsidian's settings search. Values resolve against
+     * `this.plugin.settings` via the default getControlValue/setControlValue.
+     * The imperative display() below remains the rendered UI (it carries the
+     * debounced saves and the Test Connection action).
      */
-    getSettingDefinitions() {
-        return {
-            'baseUrl': {
+    getSettingDefinitions(): SettingDefinitionItem[] {
+        return [
+            {
                 name: 'Confluence Base URL',
-                type: 'text',
+                desc: 'Required. Credentials are only sent to this host (e.g., https://mycompany.atlassian.net)',
+                aliases: ['host', 'server', 'url'],
+                control: { type: 'text', key: 'baseUrl', placeholder: 'https://mycompany.atlassian.net' },
             },
-            'userEmail': {
+            {
                 name: 'Confluence User Email',
-                type: 'text',
+                desc: 'The email address used for Confluence API authentication.',
+                aliases: ['account', 'login'],
+                control: { type: 'text', key: 'userEmail', placeholder: 'user@example.com' },
             },
-            'apiToken': {
+            {
                 name: 'Confluence API Token',
-                type: 'text',
+                desc: 'Generate from: Confluence → Profile → Settings → Personal Access Tokens',
+                aliases: ['pat', 'credentials'],
+                control: { type: 'text', key: 'apiToken' },
             },
-            'defaultSpace': {
+            {
                 name: 'Default Space Key',
-                type: 'text',
+                desc: 'Optional fallback if a note property does not specify a space.',
+                aliases: ['space'],
+                control: { type: 'text', key: 'defaultSpace' },
             },
-            'enableDebugLogging': {
+            {
                 name: 'Enable debug logging',
-                type: 'toggle',
+                desc: 'Writes a metadata-only debug log (no note or page content) into the plugin folder.',
+                aliases: ['diagnostics', 'log'],
+                control: { type: 'toggle', key: 'enableDebugLogging', defaultValue: false },
             },
-            'enablePageIdCache': {
+            {
                 name: 'Cache page IDs',
-                type: 'toggle',
-            }
-        };
+                desc: 'Improves performance by caching resolved page IDs for 1 hour.',
+                aliases: ['performance', 'resolver'],
+                control: { type: 'toggle', key: 'enablePageIdCache', defaultValue: true },
+            },
+        ];
     }
 
     display(): void {

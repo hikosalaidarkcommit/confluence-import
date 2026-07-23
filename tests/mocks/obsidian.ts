@@ -53,8 +53,22 @@ export class Modal {
 }
 
 export class Plugin { }
-export class PluginSettingTab { }
+export class PluginSettingTab {
+    app: unknown;
+    plugin: unknown;
+    constructor(app: unknown, plugin: unknown) {
+        this.app = app;
+        this.plugin = plugin;
+    }
+}
 export class Setting { }
+/** Type-only mirror of Obsidian 1.13's declarative settings item. */
+export type SettingDefinitionItem = {
+    name: string;
+    desc?: string;
+    aliases?: string[];
+    control?: { type: string; key: string; defaultValue?: unknown; placeholder?: string };
+};
 export class FileSystemAdapter {
     private _basePath: string;
     // basePath is optional to match the Obsidian type signature

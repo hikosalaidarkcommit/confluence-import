@@ -35,9 +35,19 @@ describe('manifest identity', () => {
     });
 
     test('version/minAppVersion/desktop contract intact', () => {
-        expect(manifest.version).toBe('1.0.13');
+        expect(manifest.version).toBe('1.0.14');
+        // 1.13.0 is required by the declarative settings API
+        // (PluginSettingTab.getSettingDefinitions, @since 1.13.0).
         expect(manifest.minAppVersion).toBe('1.13.0');
         expect(manifest.isDesktopOnly).toBe(true);
+    });
+
+    test('versions.json preserves historical minApp mappings', () => {
+        const versions = JSON.parse(read('versions.json'));
+        // 1.0.13 shipped with the imperative settings tab only — its
+        // historical requirement stays 1.4.4 and must never be rewritten.
+        expect(versions['1.0.13']).toBe('1.4.4');
+        expect(versions['1.0.14']).toBe('1.13.0');
     });
 
     test('package.json name matches identity and versions.json covers current version', () => {
