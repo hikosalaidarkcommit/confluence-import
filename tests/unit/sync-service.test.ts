@@ -415,6 +415,28 @@ describe('ConfluenceSyncService.syncFromConfluence (one-way pull)', () => {
         expect(app.vault.modify).not.toHaveBeenCalled();
     });
 
+    test('non-string confluence-url frontmatter: aborts before any network client is created', async () => {
+        setupMocks({});
+        const app = makeApp({
+            metadataCache: {
+                getFileCache: jest.fn().mockReturnValue({
+                    frontmatter: {
+                        'confluence-url': 12345, // invalid type
+                    },
+                }),
+            },
+        });
+        const service = new ConfluenceSyncService(app, settings, mockLogger);
+
+        await service.syncFromConfluence(makeFile());
+
+        expect(mockLogger.error).toHaveBeenCalledWith(
+            'Error in syncFromConfluence',
+            expect.any(Error)
+        );
+        expect(ConfluenceApiClient).not.toHaveBeenCalled();
+    });
+
     test('missing credentials: aborts before contacting Confluence', async () => {
         setupMocks({});
         const app = makeApp();

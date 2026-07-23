@@ -419,7 +419,7 @@ export class ConfluenceSyncService {
             throw new Error('No frontmatter found in note');
         }
 
-        const confluenceUrl = frontmatter['confluence-url'];
+        const confluenceUrl: unknown = frontmatter['confluence-url'];
 
         if (typeof confluenceUrl !== 'string') {
             throw new Error('No confluence-url found in note properties');

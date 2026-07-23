@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.16] - 2026-07-23
+### Fixed
+- **Narrow frontmatter values safely**: Fixed a community-review warning (`@typescript-eslint/no-unsafe-assignment`) by explicitly typing indexed reads from Obsidian's `FrontMatterCache` as `unknown` before runtime validation. This ensures honest type safety when retrieving the `confluence-url` property from notes.
+
 ## [1.0.15] - 2026-07-23
 ### Changed
 - Settings tab fully migrated to the declarative settings API: the deprecated `display()` override is removed. All six settings render from `getSettingDefinitions()` (grouped under Connection and Diagnostics), with the API token as a masked password input and Test Connection as an action row. Text values persist via the existing 400 ms debounce; toggles save immediately. A new command **"Test Confluence connection"** mirrors the settings action.

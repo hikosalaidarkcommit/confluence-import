@@ -35,7 +35,7 @@ describe('manifest identity', () => {
     });
 
     test('version/minAppVersion/desktop contract intact', () => {
-        expect(manifest.version).toBe('1.0.15');
+        expect(manifest.version).toBe('1.0.16');
         // 1.13.0 is required by the declarative settings API
         // (PluginSettingTab.getSettingDefinitions, @since 1.13.0).
         expect(manifest.minAppVersion).toBe('1.13.0');
