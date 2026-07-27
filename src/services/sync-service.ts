@@ -5,6 +5,7 @@ import { ConfluenceApiClient, ConfluenceApiError } from '../api/confluence-clien
 import { CachedPageResolver, ConfluencePageResolver } from '../api/page-resolver';
 import { DiffEngine } from '../diff/diff-engine';
 import { ConflictResolutionModal } from '../ui/conflict-modal';
+import { ImageImporter, ImageImportSummary, escapeUrlForMarkdown } from './image-importer';
 
 import { PluginLogger } from '../utils/logger';
 
@@ -189,6 +190,8 @@ export class ConfluenceSyncService {
                 // replaces the local body — there is no per-block resolution.
                 // Confluence is never written to.
                 await this.showPullPreview(diffResult, async () => {
+                    let imageSummary: ImageImportSummary | null = null;
+                    const imageImporter = new ImageImporter(this.app, apiClient, this.logger);
                     try {
                         this.logger.info('Pull accepted. Verifying file state before apply.');
 
@@ -212,39 +215,90 @@ export class ConfluenceSyncService {
                             throw new Error(msg);
                         }
 
-                        // Re-read the current file state to detect any external
-                        // edits that happened while the modal was open.
-                        const currentContent = await this.app.vault.read(file);
-                        if (currentContent !== snapshotContent) {
-                            // Fail closed: preserve the user's external edit.
-                            // The modal stays open so the user can retry or cancel.
-                            const msg =
-                                '⚠ The note was modified while the sync dialog was open. ' +
-                                'Pull aborted to preserve your changes. Please close and re-sync.';
-                            new Notice(msg, 10000);
-                            this.logger.warn('Apply aborted: file changed during modal', {
-                                path: file.path,
-                            });
-                            throw new Error(msg);
+                        // FIRST stale check: re-read the current file state to
+                        // detect external edits made while the modal was open.
+                        // Runs BEFORE any image download work starts.
+                        this.assertNotStale(await this.app.vault.read(file), snapshotContent, file);
+
+                        // IMAGE PHASE 1: download eligible attachment images
+                        // into memory buffers (no vault writes yet). External
+                        // URLs are never fetched. Skipped entirely when the
+                        // importImages setting is off or the page has none.
+                        let body = diffResult.remoteContent;
+                        if (diffResult.imageRefs.length > 0) {
+                            if (this.settings.importImages) {
+                                new Notice(`🖼 Downloading ${diffResult.imageRefs.length} image(s)…`);
+                                imageSummary = await imageImporter.downloadAll(
+                                    pageInfo.pageId, diffResult.imageRefs, file.path
+                                );
+                            } else {
+                                // Setting disabled: keep every image as a plain
+                                // remote link (no failure callout, no network).
+                                body = this.replaceTokensWithRemoteLinks(body, diffResult, apiClient);
+                            }
                         }
 
-                        // Write the remote content. The frontmatter is taken
-                        // from the just-re-read file so any frontmatter-only
-                        // edits (e.g. tags added while reviewing) are preserved.
+                        // Unload guard again after potentially slow downloads.
+                        if (this._unloading) {
+                            if (imageSummary) await imageImporter.rollback(imageSummary);
+                            throw new Error('Plugin unloaded — apply cancelled.');
+                        }
+
+                        // SECOND stale check: after downloads, before writes.
+                        const currentContent = await this.app.vault.read(file);
+                        try {
+                            this.assertNotStale(currentContent, snapshotContent, file);
+                        } catch (e) {
+                            if (imageSummary) await imageImporter.rollback(imageSummary);
+                            throw e;
+                        }
+
+                        // IMAGE PHASE 2: write buffered attachments into the
+                        // vault (default attachment location), then replace
+                        // the exact placeholder tokens.
+                        if (imageSummary) {
+                            await imageImporter.writeBuffers(imageSummary, file.path);
+                            body = ImageImporter.applyReplacements(body, imageSummary.outcomes);
+                        }
+
+                        // Write the note body. The frontmatter is taken from
+                        // the just-re-read file so any frontmatter-only edits
+                        // (e.g. tags added while reviewing) are preserved.
                         const { frontmatter: currentFrontmatter } =
                             this.extractFrontmatter(currentContent);
                         const fullContent = currentFrontmatter
-                            ? currentFrontmatter + '\n' + diffResult.remoteContent
-                            : diffResult.remoteContent;
-                        await this.app.vault.modify(file, fullContent);
+                            ? currentFrontmatter + '\n' + body
+                            : body;
+                        try {
+                            await this.app.vault.modify(file, fullContent);
+                        } catch (e) {
+                            // Note write failed: roll back attachments created
+                            // in this attempt so no orphans remain.
+                            if (imageSummary) await imageImporter.rollback(imageSummary);
+                            throw e;
+                        }
 
                         // Record which remote version this pull was based on.
                         // Uses processFrontMatter so ONLY confluence-version is
                         // touched — all other properties are left intact.
                         await this.updateVersionInFrontmatter(file, remotePage.version.number);
 
-                        new Notice('✅ Local note replaced with Confluence version.', 5000);
-                        this.logger.info('Pull sync complete: local file replaced, Confluence untouched.');
+                        if (imageSummary && (imageSummary.imported + imageSummary.reused + imageSummary.failed + imageSummary.keptRemote) > 0) {
+                            new Notice(
+                                `✅ Note updated. 圖片:${imageSummary.imported} 匯入、` +
+                                `${imageSummary.reused} 重用、${imageSummary.failed} 失敗(保留遠端連結)、` +
+                                `${imageSummary.keptRemote} 外部保留遠端。`,
+                                8000
+                            );
+                        } else {
+                            new Notice('✅ Local note replaced with Confluence version.', 5000);
+                        }
+                        this.logger.info('Pull sync complete: local file replaced, Confluence untouched.', {
+                            imported: imageSummary?.imported ?? 0,
+                            reused: imageSummary?.reused ?? 0,
+                            failedImages: imageSummary?.failed ?? 0,
+                            keptRemote: imageSummary?.keptRemote ?? 0,
+                        });
                     } catch (error) {
                         this.logger.error('Error while applying pulled content locally', error);
                         if (!(error instanceof Error && error.message.startsWith('⚠'))) {
@@ -348,6 +402,49 @@ export class ConfluenceSyncService {
                 'The protocols must match to prevent credential exposure.'
             );
         }
+    }
+
+    /** Throws the standard stale-file abort when content changed since snapshot. */
+    private assertNotStale(currentContent: string, snapshotContent: string, file: TFile): void {
+        if (currentContent !== snapshotContent) {
+            const msg =
+                '⚠ The note was modified while the sync dialog was open. ' +
+                'Pull aborted to preserve your changes. Please close and re-sync.';
+            new Notice(msg, 10000);
+            this.logger.warn('Apply aborted: file changed during modal', {
+                path: file.path,
+            });
+            throw new Error(msg);
+        }
+    }
+
+    /**
+     * importImages=false path: replace every image token with a plain remote
+     * representation (no download, no failure callout, no credentials).
+     * Attachment refs (no public URL known without metadata) keep an
+     * external-style informational block pointing at the configured site.
+     */
+    private replaceTokensWithRemoteLinks(
+        body: string,
+        diffResult: DiffResult,
+        apiClient: ConfluenceApiClient
+    ): string {
+        let result = body;
+        for (const ref of diffResult.imageRefs) {
+            let replacement: string;
+            if (ref.kind === 'url' && ref.url) {
+                replacement = `![${ref.alt || 'image'}](${escapeUrlForMarkdown(ref.url)})`;
+            } else {
+                // Attachment without download: name it and note it was not imported.
+                const alt = ref.alt || ref.filename || 'image';
+                replacement = [
+                    `> [!info] 圖片未下載(圖片匯入已停用)`,
+                    `> 附件:${escapeUrlForMarkdown(ref.filename ?? alt)}(位於 ${escapeUrlForMarkdown(apiClient.getBaseUrl())})`,
+                ].join('\n');
+            }
+            result = result.split(ref.token).join(replacement);
+        }
+        return result;
     }
 
     private async updateVersionInFrontmatter(file: TFile, newVersion: number): Promise<void> {

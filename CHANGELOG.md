@@ -2,8 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
-### Added (documentation & discovery — no runtime change)
+## [1.0.17] - 2026-07-24
+### Added
+- **Image import** (new setting "Import images", default on): images attached to the Confluence page are downloaded into the vault's configured default attachment location and embedded with local links generated via Obsidian's link APIs. Repeat imports reuse previously imported files through deterministic `confluence-<pageId>-<hash>` filenames instead of duplicating.
+- Partial-failure handling: the note body always updates; a failed image keeps its remote URL and gains a visible warning callout (`圖片未匯入` + 遠端 URL + reason). External (non-Confluence) images are never downloaded and never receive credentials — they stay as remote links with an informational notice.
+- Security constraints: credentialed downloads only to the configured Confluence origin using attachment API `_links.download` metadata (URLs are never guessed from content); MIME allowlist PNG/JPEG/GIF/WebP/BMP (SVG excluded); limits 20 MB per image, 50 images per page, 100 MB total, sequential downloads; alt text/URLs escaped against Markdown injection.
+- Reliability: downloads run only after Pull & Replace passes the first stale check; a second stale check runs after downloads and before any write; attachments created in a failed attempt (stale file, plugin unload, or note-write failure) are moved to trash. Cancel creates nothing. A completion notice summarizes imported/reused/failed/kept-remote counts.
+### Changed
+- Read-only preview shows images as readable text placeholders (`[image attachment: name]` / `[remote image: URL]`) with no network access or rendering.
+- When "Import images" is off, images remain plain remote links with no downloads, no credentials, and no failure callouts.
+### Added (documentation & discovery — from the unreleased docs pass, shipping with this version)
 - Documentation index (`docs/INDEX.md`) separating current docs from the historical design archive, plus contributor content rules (factual claims only; forbidden-claim list; verified external links only).
 - Current-facing `docs/FAQ.md`, `docs/TROUBLESHOOTING.md`, and an objective `docs/COMPARISON.md` comparing workflow categories (manual import with diff preview vs copy/paste vs export/conversion pipelines vs publishing tools) without naming competitors.
 - Root `llms.txt`: plain factual capability/non-capability summary with canonical repository links (no structured-data tricks, crawler directives, or invented statistics).

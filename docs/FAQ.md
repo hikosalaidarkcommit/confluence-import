@@ -85,6 +85,28 @@ dropped; links with dangerous schemes (`javascript:`, `data:`, etc.) are
 stripped for safety. Very large pages (>1 MB) show a one-time performance
 notice but still import.
 
+## What happens to images on the page?
+
+With **Import images** enabled (the default), images attached to the
+Confluence page are downloaded into your vault's configured default
+attachment location and embedded with local links. Safety rules:
+
+- Only images from your configured Confluence host are downloaded, using
+  download URLs taken from the Confluence attachment API metadata — never
+  guessed. External images (other domains) are **never** downloaded and
+  never receive credentials; they stay as remote links with an info notice.
+- Format allowlist: PNG, JPEG, GIF, WebP, BMP (SVG is excluded for safety).
+  Limits: 20 MB per image, 50 images per page, 100 MB total per import.
+- If a download fails, your note text still updates normally — the failed
+  image keeps its remote URL plus a visible warning callout showing that URL
+  and the reason.
+- Re-importing the same page reuses previously imported attachment files
+  (deterministic `confluence-<pageId>-<hash>` filenames) instead of creating
+  duplicates. If applying the note fails, attachments created during that
+  attempt are moved to trash.
+- Turning **Import images** off keeps all images as plain remote links with
+  no downloads and no failure callouts.
+
 ## What does Test Connection do?
 
 It validates your configured Base URL + email + token by making a single

@@ -35,7 +35,7 @@ describe('manifest identity', () => {
     });
 
     test('version/minAppVersion/desktop contract intact', () => {
-        expect(manifest.version).toBe('1.0.16');
+        expect(manifest.version).toBe('1.0.17');
         // 1.13.0 is required by the declarative settings API
         // (PluginSettingTab.getSettingDefinitions, @since 1.13.0).
         expect(manifest.minAppVersion).toBe('1.13.0');
@@ -110,7 +110,7 @@ describe('settings heading compliance', () => {
             expect(label.toLowerCase()).not.toContain('settings');
 
             // Expected functional labels
-            expect(['Connection', 'Diagnostics']).toContain(label);
+            expect(['Connection', 'Import', 'Diagnostics']).toContain(label);
         }
     });
 });

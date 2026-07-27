@@ -50,7 +50,7 @@ describe('getSettingDefinitions (fully declarative)', () => {
     });
 
     test('two groups: Connection and Diagnostics', () => {
-        expect(defs.map(d => d.heading)).toEqual(['Connection', 'Diagnostics']);
+        expect(defs.map(d => d.heading)).toEqual(['Connection', 'Import', 'Diagnostics']);
         expect(defs.every(d => d.type === 'group')).toBe(true);
     });
 
@@ -61,6 +61,7 @@ describe('getSettingDefinitions (fully declarative)', () => {
             'defaultSpace',
             'enableDebugLogging',
             'enablePageIdCache',
+            'importImages',
             'userEmail',
         ]);
     });

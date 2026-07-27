@@ -21,6 +21,11 @@ Plugin id: confluence-import. Author: hikosalaidarkcommit. License: MIT.
   userinfo, and non-http(s) schemes are rejected.
 - Safety guards: aborts if the note changed while the preview was open, or
   if the remote page converts to an empty body.
+- Optional image import (default on): downloads page-attachment images from
+  the configured Confluence host only (API-metadata URLs, MIME allowlist,
+  20MB/50-image/100MB limits) into the vault's default attachment folder
+  with local links; failed downloads keep the remote URL plus a visible
+  callout; external images always stay remote and never see credentials.
 
 ## What it does NOT do
 

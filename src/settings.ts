@@ -16,6 +16,7 @@ export interface ConfluenceSyncPluginInterface extends Plugin {
 const IMMEDIATE_SAVE_KEYS: ReadonlySet<string> = new Set([
     'enableDebugLogging',
     'enablePageIdCache',
+    'importImages',
 ]);
 
 /**
@@ -52,6 +53,7 @@ export class ConfluenceSettingsTab extends PluginSettingTab {
             case 'defaultSpace': return this.plugin.settings.defaultSpace ?? '';
             case 'enableDebugLogging': return this.plugin.settings.enableDebugLogging;
             case 'enablePageIdCache': return this.plugin.settings.enablePageIdCache;
+            case 'importImages': return this.plugin.settings.importImages;
             default: return undefined;
         }
     }
@@ -77,6 +79,9 @@ export class ConfluenceSettingsTab extends PluginSettingTab {
                 break;
             case 'enablePageIdCache':
                 if (typeof value === 'boolean') this.plugin.settings.enablePageIdCache = value;
+                break;
+            case 'importImages':
+                if (typeof value === 'boolean') this.plugin.settings.importImages = value;
                 break;
             default:
                 return;
@@ -152,6 +157,18 @@ export class ConfluenceSettingsTab extends PluginSettingTab {
                             void this.runConnectionTest();
                         },
                         disabled: () => this.testingConnection,
+                    },
+                ],
+            },
+            {
+                type: 'group',
+                heading: 'Import',
+                items: [
+                    {
+                        name: 'Import images',
+                        desc: 'Download Confluence attachment images into your vault (default attachment location) and link them locally. When off, images stay as remote links and no image downloads occur. External (non-Confluence) images are never downloaded either way.',
+                        aliases: ['images', 'attachments', 'download'],
+                        control: { type: 'toggle', key: 'importImages', defaultValue: true },
                     },
                 ],
             },

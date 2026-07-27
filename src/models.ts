@@ -5,6 +5,8 @@ export interface ConfluenceSettings {
     defaultSpace?: string;
     enableDebugLogging: boolean;
     enablePageIdCache: boolean;
+    /** Download Confluence attachment images into the vault on import. */
+    importImages: boolean;
 }
 
 export const DEFAULT_SETTINGS: ConfluenceSettings = {
@@ -13,7 +15,8 @@ export const DEFAULT_SETTINGS: ConfluenceSettings = {
     userEmail: '',
     defaultSpace: '',
     enableDebugLogging: false,
-    enablePageIdCache: true
+    enablePageIdCache: true,
+    importImages: true
 };
 
 /**
@@ -36,8 +39,46 @@ export function parseStoredSettings(raw: unknown): ConfluenceSettings {
     if (typeof source.defaultSpace === 'string') settings.defaultSpace = source.defaultSpace;
     if (typeof source.enableDebugLogging === 'boolean') settings.enableDebugLogging = source.enableDebugLogging;
     if (typeof source.enablePageIdCache === 'boolean') settings.enablePageIdCache = source.enablePageIdCache;
+    if (typeof source.importImages === 'boolean') settings.importImages = source.importImages;
 
     return settings;
+}
+
+/**
+ * One image reference discovered during storage→Markdown conversion.
+ * `token` is a deterministic unique placeholder embedded in the converted
+ * Markdown; the apply step replaces the EXACT token string — no fragile
+ * Markdown re-parsing.
+ */
+export interface RemoteImageRef {
+    /** Unique placeholder token present in DiffResult.remoteContent. */
+    token: string;
+    /** 'attachment' = ri:attachment (needs API metadata resolution); 'url' = explicit URL (ri:url or img src). */
+    kind: 'attachment' | 'url';
+    /** Attachment filename (kind='attachment'). */
+    filename?: string;
+    /** Explicit source URL (kind='url'); may be relative. */
+    url?: string;
+    /** Sanitized alt text (may be empty). */
+    alt: string;
+    /** Sanitized title (may be empty). */
+    title?: string;
+    /** Positive integer width if declared and valid. */
+    width?: number;
+}
+
+/** Result status for one image ref after an import attempt. */
+export type ImageOutcomeStatus = 'imported' | 'reused' | 'failed' | 'kept-remote';
+
+export interface ImageOutcome {
+    ref: RemoteImageRef;
+    status: ImageOutcomeStatus;
+    /** Markdown snippet that replaces the token. */
+    replacement: string;
+    /** Vault path of a newly created attachment (rollback target). */
+    createdPath?: string;
+    /** Fixed machine-readable failure reason (never raw response bodies). */
+    reason?: string;
 }
 
 export interface NoteConfluenceMetadata {
@@ -62,6 +103,13 @@ export interface DiffResult {
     remoteContent: string;
     /** ORIGINAL (un-normalized) local markdown — safe to write to disk. */
     localContent: string;
+    /**
+     * Image references found during conversion, keyed by placeholder tokens
+     * embedded in remoteContent. Empty array when the page has no images.
+     * Identity comparison (isIdentical) is computed on token-normalized
+     * text so image tokens do not affect identical semantics.
+     */
+    imageRefs: RemoteImageRef[];
 }
 
 export interface ParsedConfluenceUrl {

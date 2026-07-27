@@ -32,6 +32,7 @@ const settings = {
     userEmail: 'user@example.com',
     enableDebugLogging: false,
     enablePageIdCache: true,
+    importImages: true,
 } as any;
 
 const REMOTE_PAGE = {
@@ -129,6 +130,7 @@ function setupMocks(diffResult: Partial<DiffResult>, modal: ModalBehavior = { ki
             remoteVersion: 0,
             remoteContent: 'remote body',
             localContent: 'local body',
+            imageRefs: [],
             ...diffResult,
         }),
     }));

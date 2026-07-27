@@ -1,11 +1,52 @@
 import TurndownService from 'turndown';
 import { gfm } from 'turndown-plugin-gfm';
 
-import { DiffResult } from '../models';
+import { DiffResult, RemoteImageRef } from '../models';
 import { normalizeMarkdown } from '../utils/markdown-normalizer';
 import { PluginLogger } from '../utils/logger';
 
 const CALLOUT_TITLE_MAX_LENGTH = 200;
+const IMAGE_ALT_MAX_LENGTH = 120;
+
+/**
+ * Deterministic, non-secret content hash (double FNV-1a, 16 hex chars).
+ * Used for placeholder tokens and attachment filenames. Pure JS — no Node
+ * crypto import, so it cannot trigger builtin-module bundle warnings.
+ */
+export function deterministicHash(input: string): string {
+    let h1 = 0x811c9dc5;
+    for (let i = 0; i < input.length; i++) {
+        h1 ^= input.charCodeAt(i);
+        h1 = Math.imul(h1, 0x01000193) >>> 0;
+    }
+    let h2 = (0x811c9dc5 ^ 0x5bd1e995) >>> 0;
+    for (let i = input.length - 1; i >= 0; i--) {
+        h2 ^= input.charCodeAt(i);
+        h2 = Math.imul(h2, 0x01000193) >>> 0;
+    }
+    return h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0');
+}
+
+/**
+ * Sanitize image alt/title text for safe embedding inside Markdown image
+ * syntax: single line, bounded length, Markdown-structural characters
+ * escaped (backslash first).
+ */
+export function sanitizeImageText(raw: string): string {
+    if (!raw) return '';
+    let text = raw.replace(/\s+/g, ' ').trim();
+    if (text.length > IMAGE_ALT_MAX_LENGTH) {
+        text = text.substring(0, IMAGE_ALT_MAX_LENGTH) + '…';
+    }
+    text = text.replace(/\\/g, '\\\\');
+    text = text.replace(/([[\]()`#>*_~|!])/g, '\\$1');
+    return text;
+}
+
+/** Build the deterministic placeholder token for one image occurrence. */
+export function buildImageToken(identity: string, index: number): string {
+    return `%%CFIMG-${deterministicHash(identity).slice(0, 12)}-${index}%%`;
+}
 
 /**
  * Sanitize a Confluence macro title before embedding it in an Obsidian
@@ -79,7 +120,8 @@ export class DiffEngine {
         remoteStorageFormat: string
     ): Promise<DiffResult> {
         this.logger?.info('=== DIFF ENGINE DEBUG START ===');
-        const remoteMarkdown = await this.convertStorageToMarkdown(remoteStorageFormat);
+        const { markdown: remoteMarkdown, imageRefs } =
+            await this.convertStorageToMarkdown(remoteStorageFormat);
 
         const normalizedLocal = normalizeMarkdown(localMarkdown);
         const normalizedRemote = normalizeMarkdown(remoteMarkdown);
@@ -91,17 +133,21 @@ export class DiffEngine {
             isIdentical: areIdentical,
             remoteVersion: 0,
             remoteContent: remoteMarkdown,
-            localContent: localMarkdown
+            localContent: localMarkdown,
+            imageRefs
         };
     }
 
-    private async convertStorageToMarkdown(storageFormat: string): Promise<string> {
+    private async convertStorageToMarkdown(
+        storageFormat: string
+    ): Promise<{ markdown: string; imageRefs: RemoteImageRef[] }> {
         // MEMORY: pre-processing returns a serialized string so the parsed
         // DOM goes out of scope (and is collectable) BEFORE Turndown builds
         // its own internal DOM. Passing the live node instead would keep
         // three full-page representations alive at once on large pages.
-        const cleanHtml = this.preprocessStorageToCleanHtml(storageFormat);
-        return this.turndownCleanHtml(cleanHtml);
+        const imageRefs: RemoteImageRef[] = [];
+        const cleanHtml = this.preprocessStorageToCleanHtml(storageFormat, imageRefs);
+        return { markdown: this.turndownCleanHtml(cleanHtml), imageRefs };
     }
 
     /**
@@ -110,9 +156,18 @@ export class DiffEngine {
      * (no innerHTML access). Node creation goes through Obsidian's createEl
      * with adoptNode; the remote DOM is never attached to the live document.
      */
-    private preprocessStorageToCleanHtml(storageFormat: string): string {
+    private preprocessStorageToCleanHtml(storageFormat: string, imageRefs?: RemoteImageRef[]): string {
         const parser = new DOMParser();
         const doc = parser.parseFromString(storageFormat, 'text/html');
+
+        // 0a. IMAGES: replace every supported image form with a deterministic
+        // unique placeholder token (plain text node). Tokens survive Turndown
+        // untouched; the apply step replaces the exact token strings. The
+        // preview shows the token's readable remote representation without
+        // any network access or rendering.
+        if (imageRefs) {
+            this.extractImages(doc, imageRefs);
+        }
 
         /**
          * Helper to create nodes using Obsidian's createEl and safely
@@ -279,6 +334,93 @@ export class DiffEngine {
             .replace(/<\/ac:([\w-]+)/gi, '</$1')
             .replace(/<ri:([\w-]+)/gi, '<$1')
             .replace(/<\/ri:([\w-]+)/gi, '</$1');
+    }
+
+    /**
+     * Find all supported image forms in the parsed storage document and
+     * replace each with a unique placeholder token text node:
+     *  - <ac:image><ri:attachment ri:filename=".."/></ac:image>
+     *  - <ac:image><ri:url ri:value=".."/></ac:image>
+     *  - standard <img src="..">
+     * Namespaced tag/attribute names may appear with or without prefixes
+     * depending on the DOM parser, so both spellings are queried.
+     */
+    private extractImages(doc: Document, imageRefs: RemoteImageRef[]): void {
+        const parseWidth = (el: Element): number | undefined => {
+            const raw = el.getAttribute('width') ?? el.getAttribute('ac:width');
+            if (!raw) return undefined;
+            const n = Number.parseInt(raw, 10);
+            return Number.isFinite(n) && n > 0 && n <= 10000 ? n : undefined;
+        };
+
+        const takeRef = (
+            node: Element,
+            ref: Omit<RemoteImageRef, 'token'>,
+            identity: string
+        ): void => {
+            const token = buildImageToken(identity, imageRefs.length);
+            imageRefs.push({ ...ref, token });
+            const placeholder = doc.createTextNode(`\n\n${token}\n\n`);
+            node.parentNode?.replaceChild(placeholder, node);
+        };
+
+        // ac:image containers (prefix may or may not survive parsing)
+        doc.querySelectorAll('ac\\:image, image').forEach(imageEl => {
+            const alt = sanitizeImageText(
+                imageEl.getAttribute('ac:alt') ?? imageEl.getAttribute('alt') ?? ''
+            );
+            const title = sanitizeImageText(
+                imageEl.getAttribute('ac:title') ?? imageEl.getAttribute('title') ?? ''
+            );
+            const width = parseWidth(imageEl);
+
+            const attachment = imageEl.querySelector('ri\\:attachment, attachment');
+            const urlEl = imageEl.querySelector('ri\\:url, url');
+
+            if (attachment) {
+                const filename = attachment.getAttribute('ri:filename')
+                    ?? attachment.getAttribute('filename') ?? '';
+                if (filename.trim()) {
+                    takeRef(imageEl, {
+                        kind: 'attachment',
+                        filename: filename.trim(),
+                        alt, title: title || undefined, width,
+                    }, `attachment:${filename.trim()}`);
+                    return;
+                }
+            }
+            if (urlEl) {
+                const value = urlEl.getAttribute('ri:value')
+                    ?? urlEl.getAttribute('value') ?? '';
+                if (value.trim() && isSafeHref(value.trim())) {
+                    takeRef(imageEl, {
+                        kind: 'url',
+                        url: value.trim(),
+                        alt, title: title || undefined, width,
+                    }, `url:${value.trim()}`);
+                    return;
+                }
+            }
+            // Unresolvable/unsafe image element: drop it, keep alt as text.
+            const fallback = doc.createTextNode(alt ? `${alt}` : '');
+            imageEl.parentNode?.replaceChild(fallback, imageEl);
+        });
+
+        // Standard <img src="..">
+        doc.querySelectorAll('img[src]').forEach(img => {
+            const src = (img.getAttribute('src') ?? '').trim();
+            const alt = sanitizeImageText(img.getAttribute('alt') ?? '');
+            const title = sanitizeImageText(img.getAttribute('title') ?? '');
+            const width = parseWidth(img);
+            if (src && isSafeHref(src)) {
+                takeRef(img, {
+                    kind: 'url', url: src, alt, title: title || undefined, width,
+                }, `img:${src}`);
+            } else {
+                const fallback = doc.createTextNode(alt ? `${alt}` : '');
+                img.parentNode?.replaceChild(fallback, img);
+            }
+        });
     }
 
     private turndownCleanHtml(cleanHtml: string): string {

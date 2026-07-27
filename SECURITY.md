@@ -61,6 +61,27 @@ Markdown/callout structure. Debug logging is written through Obsidian's
 vault adapter API into the plugin's own folder — never outside the vault —
 and logs contain metadata only (never page content, tokens, or emails).
 
+### Image import
+
+When image import is enabled (default), attachment images are downloaded
+with these constraints:
+
+- Credentialed downloads go **only** to the configured Confluence origin,
+  using download URLs taken from the Confluence attachment API metadata —
+  never constructed from page content. Origin is re-checked at the network
+  layer as defense in depth.
+- External image URLs are never fetched and never receive the Authorization
+  header; they remain remote links in the note with a visible notice.
+- MIME allowlist (PNG/JPEG/GIF/WebP/BMP — no SVG), 20 MB per image, 50
+  images per page, 100 MB total per import, sequential downloads.
+- Attachment filenames are deterministic plugin-generated names
+  (`confluence-<pageId>-<hash>.<ext>`) — no untrusted path components ever
+  reach the filesystem. Files are written through Obsidian's vault API into
+  the configured attachment folder; alt text and URLs are escaped before
+  being embedded in Markdown.
+- If applying the note fails after attachments were created, those files
+  (and only those) are moved to trash.
+
 ## Supply Chain & Release Integrity
 
 - **Dependency auditing**: `npm audit --omit=dev` must report 0

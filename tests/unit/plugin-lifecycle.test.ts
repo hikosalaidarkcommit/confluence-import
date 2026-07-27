@@ -120,6 +120,7 @@ describe('ConfluenceSyncService: enablePageIdCache controls resolver type', () =
             compare: jest.fn().mockResolvedValue({
                 isIdentical: true, hasConflicts: false,
                 remoteVersion: 0, remoteContent: '', localContent: '',
+                imageRefs: [],
             }),
         }));
 

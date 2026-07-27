@@ -50,10 +50,21 @@ export class ConflictResolutionModal extends Modal {
         // Container for the diff view — scrollable, keyboard-accessible
         const container = contentEl.createDiv({ cls: 'file-diff__preview-container' });
 
+        // For the PREVIEW ONLY, replace image placeholder tokens with a
+        // readable text representation (no network, no rendering). The
+        // actual token replacement with local links happens at apply time.
+        let previewRemote = this.diffResult.remoteContent;
+        for (const ref of this.diffResult.imageRefs) {
+            const label = ref.kind === 'attachment'
+                ? `[image attachment: ${ref.filename ?? 'unknown'}]`
+                : `[remote image: ${ref.url ?? 'unknown'}]`;
+            previewRemote = previewRemote.split(ref.token).join(label);
+        }
+
         const diffView = new FileDiffView({
             container,
             localContent: this.diffResult.localContent,
-            remoteContent: this.diffResult.remoteContent,
+            remoteContent: previewRemote,
             onAccept: async () => {
                 try {
                     await this.onAccept();

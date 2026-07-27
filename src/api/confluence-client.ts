@@ -172,6 +172,86 @@ export class ConfluenceApiClient {
   // write endpoints without revisiting the pull-only contract and its tests.
 
   /**
+   * List image attachments of a page (GET only). Returns a map from
+   * attachment filename to its canonical download link taken from the API's
+   * `_links.download` — download URLs are NEVER guessed from path patterns.
+   * Response shape is validated; entries with unusable shapes are skipped
+   * (the caller then fails that image with a remote-link callout).
+   */
+  async getAttachmentDownloadLinks(pageId: string): Promise<Map<string, string>> {
+    const url = `${this.baseUrl}/rest/api/content/${encodeURIComponent(pageId)}/child/attachment?limit=200`;
+    const response = await this.request(url, { method: 'GET' });
+
+    const res = response as Record<string, unknown>;
+    if (response == null || typeof response !== 'object' || !Array.isArray(res.results)) {
+      throw new ConfluenceApiError(
+        0,
+        'Invalid response',
+        'The Confluence attachment API returned an unexpected response shape (missing results array).'
+      );
+    }
+
+    const links = new Map<string, string>();
+    for (const entry of res.results) {
+      if (entry == null || typeof entry !== 'object') continue;
+      const e = entry as Record<string, unknown>;
+      const linksObj = e._links as Record<string, unknown> | undefined;
+      const title = e.title;
+      const download = linksObj?.download;
+      if (typeof title === 'string' && title.length > 0 && typeof download === 'string' && download.length > 0) {
+        if (!links.has(title)) {
+          links.set(title, download);
+        }
+      }
+    }
+    return links;
+  }
+
+  /**
+   * Download a binary attachment (GET only) from an ALREADY-VALIDATED
+   * same-origin URL. Returns the raw bytes plus the declared content type.
+   * Callers are responsible for origin validation BEFORE calling this —
+   * this method additionally re-asserts the origin as defense in depth.
+   */
+  async downloadBinary(absoluteUrl: string): Promise<{ data: ArrayBuffer; contentType: string }> {
+    const target = new URL(absoluteUrl);
+    const base = new URL(this.baseUrl);
+    if (target.origin !== base.origin) {
+      throw new ConfluenceApiError(
+        0,
+        'Blocked download',
+        'Attachment download URL does not match the configured Confluence origin.'
+      );
+    }
+
+    const response = await requestUrl({
+      url: absoluteUrl,
+      method: 'GET',
+      headers: { 'Authorization': this.authHeader },
+      throw: false,
+    });
+
+    if (response.status < 200 || response.status >= 300) {
+      throw new ConfluenceApiError(
+        response.status,
+        response.status === 429 ? 'Rate limit exceeded' : 'Attachment download failed',
+        `HTTP ${response.status}`
+      );
+    }
+
+    const contentTypeHeader = response.headers['content-type'] ?? response.headers['Content-Type'] ?? '';
+    return {
+      data: response.arrayBuffer,
+      contentType: typeof contentTypeHeader === 'string' ? contentTypeHeader : '',
+    };
+  }
+
+  /** The configured base URL (read-only accessor for URL resolution). */
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
+  /**
    * Test connection
    */
   async testConnection(): Promise<boolean> {

@@ -55,7 +55,8 @@ describe('ConflictResolutionModal UI', () => {
         isIdentical: false,
         remoteVersion: 1,
         remoteContent: 'remote',
-        localContent: 'local'
+        localContent: 'local',
+        imageRefs: []
     };
 
     test('uses semantic CSS class for the preview container instead of inline styles', () => {
