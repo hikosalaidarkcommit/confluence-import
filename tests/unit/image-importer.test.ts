@@ -59,7 +59,7 @@ function makeClient(overrides: Record<string, unknown> = {}) {
     return {
         getBaseUrl: () => BASE,
         getAttachmentDownloadLinks: jest.fn().mockResolvedValue(
-            new Map([['diagram.png', '/download/attachments/12345/diagram.png?version=1']])
+            new Map([['diagram.png', { download: '/download/attachments/12345/diagram.png', version: 1 }]])
         ),
         downloadBinary: jest.fn().mockResolvedValue({
             data: new ArrayBuffer(1024),
@@ -179,7 +179,7 @@ describe('downloadAll security & limits', () => {
         ], 'note.md');
 
         const dl = (client as never as { downloadBinary: jest.Mock }).downloadBinary;
-        expect(dl).toHaveBeenCalledWith(`${BASE}/download/attachments/12345/diagram.png?version=1`);
+        expect(dl).toHaveBeenCalledWith(`${BASE}/download/attachments/12345/diagram.png`);
         expect(summary.imported).toBe(1);
     });
 
@@ -203,7 +203,7 @@ describe('downloadAll security & limits', () => {
     test('metadata download link resolving off-origin fails with origin-mismatch', async () => {
         const client = makeClient({
             getAttachmentDownloadLinks: jest.fn().mockResolvedValue(
-                new Map([['x.png', 'https://evil.example.com/x.png']])
+                new Map([['x.png', { download: 'https://evil.example.com/x.png', version: 1 }]])
             ),
         });
         const importer = new ImageImporter(makeApp() as never, client, mockLogger);
@@ -260,7 +260,7 @@ describe('downloadAll security & limits', () => {
         const names = ['a', 'b', 'c', 'd', 'e', 'f'];
         const client = makeClient({
             getAttachmentDownloadLinks: jest.fn().mockResolvedValue(new Map(
-                names.map(n => [`${n}.png`, `/download/${n}.png`])
+                names.map(n => [`${n}.png`, { download: `/download/${n}.png`, version: 1 }])
             )),
             downloadBinary: jest.fn().mockResolvedValue({
                 data: new ArrayBuffer(size), contentType: 'image/png',

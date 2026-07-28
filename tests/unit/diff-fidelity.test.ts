@@ -78,7 +78,7 @@ describe('H1: real DiffEngine identical-content detection', () => {
         // Storage format that Turndown converts back to the same markdown
         const storage = '<p>Hello world</p><p>Second paragraph</p>';
 
-        const result = await engine.compare(local, storage);
+        const result = await engine.compare(local, storage, "123");
 
         expect(result.isIdentical).toBe(true);
         expect(result.hasConflicts).toBe(false);
@@ -90,7 +90,7 @@ describe('H1: real DiffEngine identical-content detection', () => {
         const local = '* item one\n* item two\n';
         const storage = '<ul><li>item one</li><li>item two</li></ul>';
 
-        const result = await engine.compare(local, storage);
+        const result = await engine.compare(local, storage, "123");
 
         expect(result.isIdentical).toBe(true);
         expect(result.hasConflicts).toBe(false);
@@ -101,7 +101,7 @@ describe('H1: real DiffEngine identical-content detection', () => {
         const local = 'Deadline: Friday';
         const storage = '<p>Deadline: Monday</p>';
 
-        const result = await engine.compare(local, storage);
+        const result = await engine.compare(local, storage, "123");
 
         expect(result.isIdentical).toBe(false);
         expect(result.hasConflicts).toBe(true);
@@ -112,7 +112,7 @@ describe('H1: real DiffEngine identical-content detection', () => {
         const local = '* star bullet\n\tTabbed line';
         const storage = '<p>Something else entirely</p>';
 
-        const result = await engine.compare(local, storage);
+        const result = await engine.compare(local, storage, "123");
 
         // localContent must be the original bytes, not the normalized form
         expect(result.localContent).toBe(local);
@@ -125,7 +125,7 @@ describe('H1: real DiffEngine identical-content detection', () => {
         const local = 'Local content';
         const storage = '<p>Remote content</p>';
 
-        const result = await engine.compare(local, storage);
+        const result = await engine.compare(local, storage, "123");
 
         // remoteContent is the Turndown-converted markdown (not XHTML)
         // and must NOT be further mangled — it is written verbatim on apply.
@@ -296,9 +296,9 @@ describe('Large-input safety (real DiffEngine, no crash)', () => {
         const storage = makeLargeStorage(2000); // ~250KB storage (kept moderate for CI time)
         expect(storage.length).toBeGreaterThan(200_000);
 
-        const warm = await engine.compare('', storage);
+        const warm = await engine.compare('', storage, "123");
         const local = warm.remoteContent + '\nlocal tail edit';
-        const result = await engine.compare(local, storage);
+        const result = await engine.compare(local, storage, "123");
 
         expect(result.isIdentical).toBe(false);
         expect(result.hasConflicts).toBe(true);
@@ -312,11 +312,11 @@ describe('Large-input safety (real DiffEngine, no crash)', () => {
     test('hasConflicts is always the negation of isIdentical', async () => {
         const engine = new DiffEngine();
 
-        const same = await engine.compare('Hello world', '<p>Hello world</p>');
+        const same = await engine.compare('Hello world', '<p>Hello world</p>', "123");
         expect(same.isIdentical).toBe(true);
         expect(same.hasConflicts).toBe(false);
 
-        const diff = await engine.compare('Hello world', '<p>Goodbye world</p>');
+        const diff = await engine.compare('Hello world', '<p>Goodbye world</p>', "123");
         expect(diff.isIdentical).toBe(false);
         expect(diff.hasConflicts).toBe(true);
     });

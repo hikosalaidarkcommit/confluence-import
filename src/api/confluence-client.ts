@@ -174,11 +174,12 @@ export class ConfluenceApiClient {
   /**
    * List image attachments of a page (GET only). Returns a map from
    * attachment filename to its canonical download link taken from the API's
-   * `_links.download` — download URLs are NEVER guessed from path patterns.
+   * `_links.download` and its version number.
+   * download URLs are NEVER guessed from path patterns.
    * Response shape is validated; entries with unusable shapes are skipped
    * (the caller then fails that image with a remote-link callout).
    */
-  async getAttachmentDownloadLinks(pageId: string): Promise<Map<string, string>> {
+  async getAttachmentDownloadLinks(pageId: string): Promise<Map<string, { download: string; version: number }>> {
     const url = `${this.baseUrl}/rest/api/content/${encodeURIComponent(pageId)}/child/attachment?limit=200`;
     const response = await this.request(url, { method: 'GET' });
 
@@ -191,16 +192,22 @@ export class ConfluenceApiClient {
       );
     }
 
-    const links = new Map<string, string>();
+    const links = new Map<string, { download: string; version: number }>();
     for (const entry of res.results) {
       if (entry == null || typeof entry !== 'object') continue;
       const e = entry as Record<string, unknown>;
       const linksObj = e._links as Record<string, unknown> | undefined;
       const title = e.title;
       const download = linksObj?.download;
-      if (typeof title === 'string' && title.length > 0 && typeof download === 'string' && download.length > 0) {
+      const version = (e.version as Record<string, unknown> | undefined)?.number;
+
+      if (
+        typeof title === 'string' && title.length > 0 &&
+        typeof download === 'string' && download.length > 0 &&
+        typeof version === 'number' && version > 0
+      ) {
         if (!links.has(title)) {
-          links.set(title, download);
+          links.set(title, { download, version });
         }
       }
     }

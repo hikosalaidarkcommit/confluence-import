@@ -107,6 +107,8 @@ function setupMocks(diffResult: Partial<DiffResult>, modal: ModalBehavior = { ki
     (ConfluenceApiClient as jest.Mock).mockImplementation(() => {
         const client: any = {
             getPage: jest.fn().mockResolvedValue(REMOTE_PAGE),
+            getBaseUrl: jest.fn().mockReturnValue('https://example.atlassian.net'),
+            getAttachmentDownloadLinks: jest.fn().mockResolvedValue(new Map()),
         };
         for (const method of REMOTE_WRITE_METHODS) {
             client[method] = jest.fn().mockRejectedValue(
@@ -181,7 +183,13 @@ describe('ConfluenceSyncService.syncFromConfluence (one-way pull)', () => {
         expect(apiInstance().getPage).toHaveBeenCalledWith('12345');
 
         const diffInstance = (DiffEngine as jest.Mock).mock.results[0].value;
-        expect(diffInstance.compare).toHaveBeenCalledWith('local body', '<p>remote body</p>');
+        expect(diffInstance.compare).toHaveBeenCalledWith(
+            'local body',
+            '<p>remote body</p>',
+            '12345',
+            expect.any(Map),
+            'https://example.atlassian.net'
+        );
 
         expect(app.vault.modify).toHaveBeenCalledTimes(1);
         const written = app.vault.modify.mock.calls[0][1];
@@ -488,6 +496,8 @@ describe('ConfluenceSyncService.syncFromConfluence (one-way pull)', () => {
                 getPage: jest.fn().mockResolvedValue(
                     pageOfSize(ConfluenceSyncService.LARGE_PAGE_WARNING_BYTES + 1)
                 ),
+                getBaseUrl: jest.fn().mockReturnValue('https://example.atlassian.net'),
+                getAttachmentDownloadLinks: jest.fn().mockResolvedValue(new Map()),
             }));
             const app = makeApp();
             const service = new ConfluenceSyncService(app, settings, mockLogger);
@@ -510,6 +520,8 @@ describe('ConfluenceSyncService.syncFromConfluence (one-way pull)', () => {
                 getPage: jest.fn().mockResolvedValue(
                     pageOfSize(ConfluenceSyncService.LARGE_PAGE_WARNING_BYTES)
                 ),
+                getBaseUrl: jest.fn().mockReturnValue('https://example.atlassian.net'),
+                getAttachmentDownloadLinks: jest.fn().mockResolvedValue(new Map()),
             }));
             const app = makeApp();
             const service = new ConfluenceSyncService(app, settings, mockLogger);
@@ -754,6 +766,7 @@ describe('ConfluenceSyncService.syncFromConfluence (one-way pull)', () => {
             setupMocks({});
             (ConfluenceApiClient as jest.Mock).mockImplementation(() => ({
                 getPage: jest.fn().mockRejectedValue(apiError(status)),
+                getBaseUrl: jest.fn().mockReturnValue('https://example.atlassian.net'),
             }));
             const app = makeApp();
             const service = new ConfluenceSyncService(app, settings, mockLogger);
@@ -795,6 +808,7 @@ describe('ConfluenceSyncService.syncFromConfluence (one-way pull)', () => {
                 getPage: jest.fn().mockRejectedValue(
                     apiError(0, 'The Confluence API returned an unexpected response shape.')
                 ),
+                getBaseUrl: jest.fn().mockReturnValue('https://example.atlassian.net'),
             }));
             const app = makeApp();
             const service = new ConfluenceSyncService(app, settings, mockLogger);
@@ -811,6 +825,7 @@ describe('ConfluenceSyncService.syncFromConfluence (one-way pull)', () => {
             setupMocks({});
             (ConfluenceApiClient as jest.Mock).mockImplementation(() => ({
                 getPage: jest.fn().mockRejectedValue(new Error('fetch failed')),
+                getBaseUrl: jest.fn().mockReturnValue('https://example.atlassian.net'),
             }));
             const app = makeApp();
             const service = new ConfluenceSyncService(app, settings, mockLogger);

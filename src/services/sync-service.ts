@@ -157,13 +157,27 @@ export class ConfluenceSyncService {
             const localMarkdown = await this.app.vault.read(file);
             const { content: localBody } = this.extractFrontmatter(localMarkdown);
 
-            // Step 5: Perform diff
+            // Step 5: Resolve attachment metadata (GET only) before diff
+            let attachmentLinks: Map<string, { download: string; version: number }> | undefined;
+            if (this.settings.importImages) {
+                try {
+                    attachmentLinks = await apiClient.getAttachmentDownloadLinks(pageInfo.pageId);
+                } catch (e) {
+                    this.logger.warn('Attachment metadata fetch failed', {
+                        status: e instanceof ConfluenceApiError ? e.status : undefined,
+                    });
+                }
+            }
+
+            // Step 6: Perform diff with version-aware image identity
             new Notice('🔄 Checking for conflicts...');
             const diffEngine = new DiffEngine(this.logger);
-            // remotePage.body.storage.value is XHTML.
             const diffResult = await diffEngine.compare(
                 localBody,
-                remotePage.body.storage.value
+                remotePage.body.storage.value,
+                pageInfo.pageId,
+                attachmentLinks,
+                apiClient.getBaseUrl()
             );
             diffResult.remoteVersion = remotePage.version.number;
             this.logger.info('Diff result', {
@@ -172,7 +186,7 @@ export class ConfluenceSyncService {
                 remoteLength: diffResult.remoteContent.length
             });
 
-            // Step 6: Handle identical content, differences, or finish
+            // Step 7: Handle identical content, differences, or finish
             if (diffResult.isIdentical) {
                 // Real no-op path: never touch the note body.
                 this.logger.info('Content identical');
@@ -229,7 +243,7 @@ export class ConfluenceSyncService {
                             if (this.settings.importImages) {
                                 new Notice(`🖼 Downloading ${diffResult.imageRefs.length} image(s)…`);
                                 imageSummary = await imageImporter.downloadAll(
-                                    pageInfo.pageId, diffResult.imageRefs, file.path
+                                    pageInfo.pageId, diffResult.imageRefs, file.path, attachmentLinks
                                 );
                             } else {
                                 // Setting disabled: keep every image as a plain
@@ -261,13 +275,24 @@ export class ConfluenceSyncService {
                             body = ImageImporter.applyReplacements(body, imageSummary.outcomes);
                         }
 
+                        // THIRD stale check: immediately before note write.
+                        // Runs AFTER potentially slow sequential writes.
+                        const finalContent = await this.app.vault.read(file);
+                        try {
+                            if (this._unloading) throw new Error('Plugin unloaded — apply cancelled.');
+                            this.assertNotStale(finalContent, snapshotContent, file);
+                        } catch (e) {
+                            if (imageSummary) await imageImporter.rollback(imageSummary);
+                            throw e;
+                        }
+
                         // Write the note body. The frontmatter is taken from
                         // the just-re-read file so any frontmatter-only edits
-                        // (e.g. tags added while reviewing) are preserved.
-                        const { frontmatter: currentFrontmatter } =
-                            this.extractFrontmatter(currentContent);
-                        const fullContent = currentFrontmatter
-                            ? currentFrontmatter + '\n' + body
+                        // (e.g. tags added during the pull process) are preserved.
+                        const { frontmatter: finalFrontmatter } =
+                            this.extractFrontmatter(finalContent);
+                        const fullContent = finalFrontmatter
+                            ? finalFrontmatter + '\n' + body
                             : body;
                         try {
                             await this.app.vault.modify(file, fullContent);

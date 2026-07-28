@@ -25,7 +25,7 @@ describe('DiffEngine image extraction', () => {
             '<ac:image ac:alt="my diagram" ac:width="480">' +
             '<ri:attachment ri:filename="diagram v2.png"/></ac:image>' +
             '<p>after</p>';
-        const result = await engine.compare('x', storage);
+        const result = await engine.compare('x', storage, "123");
 
         expect(result.imageRefs).toHaveLength(1);
         const ref = result.imageRefs[0];
@@ -43,7 +43,7 @@ describe('DiffEngine image extraction', () => {
         const engine = new DiffEngine();
         const storage =
             '<ac:image><ri:url ri:value="https://cdn.example.org/pic.jpg"/></ac:image>';
-        const result = await engine.compare('x', storage);
+        const result = await engine.compare('x', storage, "123");
 
         expect(result.imageRefs).toHaveLength(1);
         expect(result.imageRefs[0].kind).toBe('url');
@@ -54,7 +54,7 @@ describe('DiffEngine image extraction', () => {
     test('standard img src form produces url ref with alt/width', async () => {
         const engine = new DiffEngine();
         const storage = '<p><img src="/download/attachments/1/x.png" alt="inline pic" width="200"></p>';
-        const result = await engine.compare('x', storage);
+        const result = await engine.compare('x', storage, "123");
 
         expect(result.imageRefs).toHaveLength(1);
         expect(result.imageRefs[0].kind).toBe('url');
@@ -66,7 +66,7 @@ describe('DiffEngine image extraction', () => {
     test('dangerous img src scheme is dropped (no ref, alt kept as text)', async () => {
         const engine = new DiffEngine();
         const storage = '<p><img src="javascript:alert(1)" alt="evil pic"></p>';
-        const result = await engine.compare('x', storage);
+        const result = await engine.compare('x', storage, "123");
 
         expect(result.imageRefs).toHaveLength(0);
         expect(result.remoteContent).toContain('evil pic');
@@ -76,7 +76,7 @@ describe('DiffEngine image extraction', () => {
     test('alt text with Markdown injection characters is sanitized', async () => {
         const engine = new DiffEngine();
         const storage = '<ac:image ac:alt="a](x) ![b"><ri:attachment ri:filename="f.png"/></ac:image>';
-        const result = await engine.compare('x', storage);
+        const result = await engine.compare('x', storage, "123");
 
         expect(result.imageRefs[0].alt).toContain('\\]');
         expect(result.imageRefs[0].alt).toContain('\\[');
@@ -89,7 +89,7 @@ describe('DiffEngine image extraction', () => {
             '<ac:image><ri:attachment ri:filename="a.png"/></ac:image>' +
             '<ac:image><ri:attachment ri:filename="a.png"/></ac:image>' +
             '<img src="https://e.example.com/c.png">';
-        const result = await engine.compare('x', storage);
+        const result = await engine.compare('x', storage, "123");
 
         expect(result.imageRefs).toHaveLength(3);
         const tokens = new Set(result.imageRefs.map(r => r.token));
@@ -98,7 +98,7 @@ describe('DiffEngine image extraction', () => {
 
     test('page without images yields empty imageRefs (identical semantics intact)', async () => {
         const engine = new DiffEngine();
-        const result = await engine.compare('Hello world', '<p>Hello world</p>');
+        const result = await engine.compare('Hello world', '<p>Hello world</p>', "123");
         expect(result.imageRefs).toEqual([]);
         expect(result.isIdentical).toBe(true);
     });
@@ -106,7 +106,7 @@ describe('DiffEngine image extraction', () => {
     test('attachment without filename is dropped without a ref', async () => {
         const engine = new DiffEngine();
         const storage = '<ac:image ac:alt="broken"><ri:attachment/></ac:image>';
-        const result = await engine.compare('x', storage);
+        const result = await engine.compare('x', storage, "123");
         expect(result.imageRefs).toHaveLength(0);
         expect(result.remoteContent).toContain('broken');
     });

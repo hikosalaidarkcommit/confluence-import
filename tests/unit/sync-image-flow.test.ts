@@ -95,7 +95,7 @@ function setupMocks(options: {
         contentType: 'image/png',
     });
     const getLinks = options.getLinks ?? jest.fn().mockResolvedValue(
-        new Map([['diagram.png', '/download/attachments/12345/diagram.png']])
+        new Map([['diagram.png', { download: '/download/attachments/12345/diagram.png', version: 1 }]])
     );
 
     (ConfluenceApiClient as unknown as jest.Mock).mockImplementation(() => ({

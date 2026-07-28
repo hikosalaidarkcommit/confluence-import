@@ -57,6 +57,8 @@ export interface RemoteImageRef {
     kind: 'attachment' | 'url';
     /** Attachment filename (kind='attachment'). */
     filename?: string;
+    /** Attachment version (kind='attachment'). */
+    version?: number;
     /** Explicit source URL (kind='url'); may be relative. */
     url?: string;
     /** Sanitized alt text (may be empty). */

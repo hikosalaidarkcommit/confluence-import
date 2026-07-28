@@ -77,7 +77,7 @@ describe('macro title injection end-to-end (real DiffEngine)', () => {
             '<rich-text-body><p>body text</p></rich-text-body>' +
             '</structured-macro>';
 
-        const result = await engine.compare('x', storage);
+        const result = await engine.compare('x', storage, "123");
         const md = result.remoteContent;
 
         // Exactly one callout header, and no injected heading line
@@ -93,7 +93,7 @@ describe('macro title injection end-to-end (real DiffEngine)', () => {
             '<structured-macro name="totally-unknown-macro">' +
             '<rich-text-body><p>content here</p></rich-text-body>' +
             '</structured-macro>';
-        const result = await engine.compare('x', storage);
+        const result = await engine.compare('x', storage, "123");
         expect(result.remoteContent).not.toContain('[!');
     });
 });
@@ -132,7 +132,7 @@ describe('dangerous links stripped during conversion (real DiffEngine)', () => {
         const storage =
             '<p><a href="javascript:alert(1)">click me</a> and ' +
             '<a href="https://example.com/ok">good link</a></p>';
-        const result = await engine.compare('x', storage);
+        const result = await engine.compare('x', storage, "123");
         const md = result.remoteContent;
 
         expect(md).not.toContain('javascript:');
@@ -147,7 +147,7 @@ describe('dangerous links stripped during conversion (real DiffEngine)', () => {
             '<p><a href="DATA:text/html,x">d</a>' +
             '<a href=" javascript:x">j</a>' +
             '<a href="https://en.wikipedia.org/wiki/Foo_(bar)">wiki</a></p>';
-        const result = await engine.compare('x', storage);
+        const result = await engine.compare('x', storage, "123");
         const md = result.remoteContent;
 
         expect(md.toLowerCase()).not.toContain('data:text/html');

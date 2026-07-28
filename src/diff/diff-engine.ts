@@ -117,16 +117,71 @@ export class DiffEngine {
 
     async compare(
         localMarkdown: string,
-        remoteStorageFormat: string
+        remoteStorageFormat: string,
+        pageId: string,
+        attachmentLinks?: Map<string, { download: string; version: number }>,
+        baseUrl?: string
     ): Promise<DiffResult> {
         this.logger?.info('=== DIFF ENGINE DEBUG START ===');
-        const { markdown: remoteMarkdown, imageRefs } =
-            await this.convertStorageToMarkdown(remoteStorageFormat);
+        const imageRefs: RemoteImageRef[] = [];
+        const cleanHtml = this.preprocessStorageToCleanHtml(
+            remoteStorageFormat,
+            imageRefs,
+            pageId,
+            attachmentLinks,
+            baseUrl
+        );
+        const remoteMarkdown = this.turndownCleanHtml(cleanHtml);
 
         const normalizedLocal = normalizeMarkdown(localMarkdown);
         const normalizedRemote = normalizeMarkdown(remoteMarkdown);
 
-        const areIdentical = normalizedLocal === normalizedRemote;
+        // Honest identity comparison: instead of broad-stripping, we check if
+        // the local note contains the EXACT deterministic links we expect
+        // for the current remote image set.
+        let areIdentical = normalizedLocal === normalizedRemote;
+
+        if (!areIdentical && imageRefs.length > 0) {
+            // Check if the only differences are placeholder tokens vs their
+            // corresponding deterministic local links.
+            let localReplaced = normalizedLocal;
+            let remoteReplaced = normalizedRemote;
+
+            for (let i = 0; i < imageRefs.length; i++) {
+                const ref = imageRefs[i];
+                const token = ref.token;
+                const uniquePlaceholder = `IMG_PLACEHOLDER_${i}`;
+
+                // If the ref was resolved to an attachment, we know exactly
+                // what the local link should be (including version if available).
+                if (ref.kind === 'attachment' && ref.filename) {
+                    const meta = attachmentLinks?.get(ref.filename);
+                    if (meta) {
+                        const download = meta.download;
+                        const version = meta.version;
+                        const identity = (pageId && download)
+                            ? (version ? `attachment:${pageId}:${download}:${version}` : `attachment:${pageId}:${download}`)
+                            : `attachment:${ref.filename.trim()}`;
+
+                        const expectedName = this.buildExpectedFilename(pageId, identity, ref.filename);
+                        // Use a conservative pattern that matches what buildLocalEmbed produces
+                        const pattern = new RegExp(`!\\[\\[${expectedName.replace(/\./g, '\\.')}(?:\\|\\d+)?\\]\\]`, 'g');
+                        localReplaced = localReplaced.replace(pattern, uniquePlaceholder);
+                        remoteReplaced = remoteReplaced.replace(token, uniquePlaceholder);
+                    }
+                } else if (ref.kind === 'url' && ref.url) {
+                    // External URLs are kept as remote links. We check if the
+                    // local note contains the exact same link.
+                    const alt = ref.alt || 'image';
+                    const safeUrl = ref.url.replace(/[<>`\\]/g, (c) => encodeURIComponent(c));
+                    const expectedLink = `![${alt}](${safeUrl})`;
+                    const escapedLink = expectedLink.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    localReplaced = localReplaced.replace(new RegExp(escapedLink, 'g'), uniquePlaceholder);
+                    remoteReplaced = remoteReplaced.replace(token, uniquePlaceholder);
+                }
+            }
+            areIdentical = localReplaced === remoteReplaced;
+        }
 
         return {
             hasConflicts: !areIdentical,
@@ -138,15 +193,29 @@ export class DiffEngine {
         };
     }
 
-    private async convertStorageToMarkdown(
-        storageFormat: string
-    ): Promise<{ markdown: string; imageRefs: RemoteImageRef[] }> {
-        // MEMORY: pre-processing returns a serialized string so the parsed
-        // DOM goes out of scope (and is collectable) BEFORE Turndown builds
-        // its own internal DOM. Passing the live node instead would keep
-        // three full-page representations alive at once on large pages.
+    /**
+     * Replicate buildAttachmentFilename logic without needing ImageImporter.
+     */
+    private buildExpectedFilename(pageId: string, identity: string, originalName: string): string {
+        const ext = originalName.split('.').pop()?.toLowerCase() || 'bin';
+        const safePageId = pageId.replace(/[^0-9a-zA-Z]/g, '').slice(0, 20) || 'page';
+        return `confluence-${safePageId}-${deterministicHash(identity).slice(0, 12)}.${ext}`;
+    }
+
+    private convertStorageToMarkdown(
+        storageFormat: string,
+        pageId?: string,
+        attachmentLinks?: Map<string, { download: string; version: number }>,
+        baseUrl?: string
+    ): { markdown: string; imageRefs: RemoteImageRef[] } {
         const imageRefs: RemoteImageRef[] = [];
-        const cleanHtml = this.preprocessStorageToCleanHtml(storageFormat, imageRefs);
+        const cleanHtml = this.preprocessStorageToCleanHtml(
+            storageFormat,
+            imageRefs,
+            pageId,
+            attachmentLinks,
+            baseUrl
+        );
         return { markdown: this.turndownCleanHtml(cleanHtml), imageRefs };
     }
 
@@ -156,7 +225,13 @@ export class DiffEngine {
      * (no innerHTML access). Node creation goes through Obsidian's createEl
      * with adoptNode; the remote DOM is never attached to the live document.
      */
-    private preprocessStorageToCleanHtml(storageFormat: string, imageRefs?: RemoteImageRef[]): string {
+    private preprocessStorageToCleanHtml(
+        storageFormat: string,
+        imageRefs?: RemoteImageRef[],
+        pageId?: string,
+        attachmentLinks?: Map<string, { download: string; version: number }>,
+        baseUrl?: string
+    ): string {
         const parser = new DOMParser();
         const doc = parser.parseFromString(storageFormat, 'text/html');
 
@@ -166,7 +241,7 @@ export class DiffEngine {
         // preview shows the token's readable remote representation without
         // any network access or rendering.
         if (imageRefs) {
-            this.extractImages(doc, imageRefs);
+            this.extractImages(doc, imageRefs, pageId, attachmentLinks);
         }
 
         /**
@@ -345,7 +420,12 @@ export class DiffEngine {
      * Namespaced tag/attribute names may appear with or without prefixes
      * depending on the DOM parser, so both spellings are queried.
      */
-    private extractImages(doc: Document, imageRefs: RemoteImageRef[]): void {
+    private extractImages(
+        doc: Document,
+        imageRefs: RemoteImageRef[],
+        pageId?: string,
+        attachmentLinks?: Map<string, { download: string; version: number }>
+    ): void {
         const parseWidth = (el: Element): number | undefined => {
             const raw = el.getAttribute('width') ?? el.getAttribute('ac:width');
             if (!raw) return undefined;
@@ -381,11 +461,23 @@ export class DiffEngine {
                 const filename = attachment.getAttribute('ri:filename')
                     ?? attachment.getAttribute('filename') ?? '';
                 if (filename.trim()) {
+                    const meta = attachmentLinks?.get(filename.trim());
+                    const version = meta?.version;
+                    const download = meta?.download;
+                    // Honest identity: includes pageId, canonical download URL, and version.
+                    // This ensures that the same filename with a different version or
+                    // on a different page yields a different local link.
+                    // If version is missing (legacy/Server), falls back to download URL.
+                    const identity = (pageId && download)
+                        ? (version ? `attachment:${pageId}:${download}:${version}` : `attachment:${pageId}:${download}`)
+                        : `attachment:${filename.trim()}`;
+
                     takeRef(imageEl, {
                         kind: 'attachment',
                         filename: filename.trim(),
+                        version,
                         alt, title: title || undefined, width,
-                    }, `attachment:${filename.trim()}`);
+                    }, identity);
                     return;
                 }
             }

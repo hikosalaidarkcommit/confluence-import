@@ -153,14 +153,15 @@ export class ImageImporter {
     async downloadAll(
         pageId: string,
         refs: RemoteImageRef[],
-        notePath: string
+        notePath: string,
+        resolvedLinks?: Map<string, { download: string; version: number }>
     ): Promise<ImageImportSummary> {
         const outcomes: ImageOutcome[] = [];
         const summary: ImageImportSummary = {
             outcomes, imported: 0, reused: 0, failed: 0, keptRemote: 0, createdPaths: [],
         };
 
-        let attachmentLinks: Map<string, string> | null = null;
+        let attachmentLinks = resolvedLinks ?? null;
         let totalBytes = 0;
         const baseUrl = this.apiClient.getBaseUrl();
 
@@ -205,18 +206,21 @@ export class ImageImporter {
                     attachmentLinks = new Map();
                 }
             }
-            const download = ref.filename ? attachmentLinks.get(ref.filename) : undefined;
-            if (!download) {
+            const meta = ref.filename ? attachmentLinks.get(ref.filename) : undefined;
+            if (!meta) {
                 outcomes.push(this.fail(ref, this.remoteUrlFor(ref, baseUrl), 'metadata-missing', summary));
                 continue;
             }
-            const absolute = resolveDownloadUrl(baseUrl, download);
+            const absolute = resolveDownloadUrl(baseUrl, meta.download);
             if (!absolute) {
                 outcomes.push(this.fail(ref, this.remoteUrlFor(ref, baseUrl), 'origin-mismatch', summary));
                 continue;
             }
+            const identity = meta.version
+                ? `attachment:${pageId}:${meta.download}:${meta.version}`
+                : `attachment:${pageId}:${meta.download}`;
             const outcome = await this.downloadOne(
-                ref, absolute, pageId, `attachment:${ref.filename ?? ''}`, notePath, totalBytes
+                ref, absolute, pageId, identity, notePath, totalBytes
             );
             if (outcome.status === 'imported' && outcome.bufferBytes) totalBytes += outcome.bufferBytes;
             outcomes.push(outcome.outcome);
