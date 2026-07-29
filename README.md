@@ -46,9 +46,10 @@ the wrong tool — it has no write capability (see
   are downloaded into your vault's configured default attachment location
   and linked locally. Downloads are strictly limited to your configured
   Confluence host (metadata-resolved URLs only), with PNG/JPEG/GIF/WebP/BMP
-  allowlist, 20 MB per image / 50 images / 100 MB per import limits. If a
-  download fails, the note text still updates — the image stays as a remote
-  link with a visible callout containing the remote URL. External
+  allowlist, 20 MB per image / 50 images / 100 MB per import limits, and a
+  30-second soft timeout per download. If a download fails or times out, the
+  note text still updates — the image stays as a remote link with a visible
+  callout containing the remote URL. External
   (non-Confluence) images are never downloaded and never see credentials;
   they remain remote links with a safety notice. If applying the note fails,
   attachments created during that attempt are moved to trash (no orphans).

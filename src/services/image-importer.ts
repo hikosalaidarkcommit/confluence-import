@@ -11,6 +11,14 @@ export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 export const MAX_IMAGES_PER_PAGE = 50;
 /** Total bytes cap per import: 100 MiB. */
 export const MAX_TOTAL_BYTES = 100 * 1024 * 1024;
+/**
+ * Soft timeout per image download: 30s. Obsidian's requestUrl cannot abort
+ * the underlying network request, so this is a SOFT bound — when it fires,
+ * the pending result is permanently discarded (a late response can never
+ * create a vault file) and the image is marked failed with a remote-link
+ * callout. The sequential pipeline moves on to the next image.
+ */
+export const IMAGE_DOWNLOAD_TIMEOUT_MS = 30_000;
 
 /** Marker used to identify images pull-imported by this plugin. */
 export const IMPORT_MARKER_PREFIX = 'confluence-import-image:';
@@ -59,7 +67,8 @@ export type ImageFailureReason =
     | 'too-large'
     | 'total-budget-exceeded'
     | 'count-limit-exceeded'
-    | 'write-failed';
+    | 'write-failed'
+    | 'timeout';
 
 const REASON_TEXT: Record<ImageFailureReason, string> = {
     'metadata-missing': '在頁面附件中找不到對應的附件中繼資料',
@@ -70,7 +79,16 @@ const REASON_TEXT: Record<ImageFailureReason, string> = {
     'total-budget-exceeded': '已達本次匯入 100MB 總量上限',
     'count-limit-exceeded': '已達單頁 50 張圖片上限',
     'write-failed': '寫入附件檔案失敗',
+    'timeout': '下載逾時(超過 30 秒)',
 };
+
+/** Thrown internally when a download exceeds the soft timeout. */
+export class ImageTimeoutError extends Error {
+    constructor() {
+        super('Image download timed out');
+        this.name = 'ImageTimeoutError';
+    }
+}
 
 /**
  * Escape a URL for safe display inside Markdown text/callouts:
@@ -154,11 +172,55 @@ export interface ImageImportSummary {
  * - Downloads are sequential; per-image/total/count limits enforced.
  */
 export class ImageImporter {
+    /**
+     * Injectable for tests only (fake timers). Not a user setting — 30s is
+     * a safety bound, not a tuning knob.
+     */
+    private readonly downloadTimeoutMs: number;
+
     constructor(
         private app: App,
         private apiClient: ConfluenceApiClient,
-        private logger: PluginLogger
-    ) { }
+        private logger: PluginLogger,
+        options?: { downloadTimeoutMs?: number }
+    ) {
+        this.downloadTimeoutMs = options?.downloadTimeoutMs ?? IMAGE_DOWNLOAD_TIMEOUT_MS;
+    }
+
+    /**
+     * Race a download against the soft timeout. The download promise NEVER
+     * performs side effects — it only resolves a buffer/result, so a late
+     * resolution after timeout is simply discarded. A rejection handler is
+     * attached to the losing promise so a late failure can never surface as
+     * an unhandled rejection.
+     */
+    private async downloadWithTimeout(
+        absoluteUrl: string
+    ): Promise<{ data: ArrayBuffer; contentType: string }> {
+        const download = this.apiClient.downloadBinary(absoluteUrl);
+
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timeout = new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new ImageTimeoutError()), this.downloadTimeoutMs);
+        });
+
+        try {
+            return await Promise.race([download, timeout]);
+        } catch (e) {
+            if (e instanceof ImageTimeoutError) {
+                // Discard the late result permanently and swallow any late
+                // rejection (no unhandled rejection). requestUrl cannot abort
+                // the underlying network request — see class doc.
+                download.then(
+                    () => { this.logger.info('Discarded late image download result (timed out)'); },
+                    () => { /* late failure of an already-failed image: ignore */ }
+                );
+            }
+            throw e;
+        } finally {
+            if (timer !== undefined) clearTimeout(timer);
+        }
+    }
 
     /**
      * Phase 1 (before second stale check): download all eligible images into
@@ -377,13 +439,16 @@ export class ImageImporter {
         let data: ArrayBuffer;
         let contentType: string;
         try {
-            const result = await this.apiClient.downloadBinary(absoluteUrl);
+            const result = await this.downloadWithTimeout(absoluteUrl);
             data = result.data;
             contentType = result.contentType;
         } catch (e) {
-            const reason: ImageFailureReason =
-                e instanceof ConfluenceApiError && e.statusText === 'Blocked download'
-                    ? 'origin-mismatch' : 'http-error';
+            let reason: ImageFailureReason = 'http-error';
+            if (e instanceof ImageTimeoutError) {
+                reason = 'timeout';
+            } else if (e instanceof ConfluenceApiError && e.statusText === 'Blocked download') {
+                reason = 'origin-mismatch';
+            }
             const outcome: ImageOutcome = {
                 ref, status: 'failed', reason,
                 replacement: buildFailureBlock(ref, absoluteUrl, reason),

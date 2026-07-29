@@ -96,7 +96,9 @@ attachment location and embedded with local links. Safety rules:
   guessed. External images (other domains) are **never** downloaded and
   never receive credentials; they stay as remote links with an info notice.
 - Format allowlist: PNG, JPEG, GIF, WebP, BMP (SVG is excluded for safety).
-  Limits: 20 MB per image, 50 images per page, 100 MB total per import.
+  Limits: 20 MB per image, 50 images per page, 100 MB total per import, and
+  a 30-second soft timeout per download (a slow download is marked failed
+  and its late result is discarded — it can never write a file afterwards).
 - If a download fails, your note text still updates normally — the failed
   image keeps its remote URL plus a visible warning callout showing that URL
   and the reason.

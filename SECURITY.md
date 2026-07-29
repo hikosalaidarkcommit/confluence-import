@@ -73,7 +73,11 @@ with these constraints:
 - External image URLs are never fetched and never receive the Authorization
   header; they remain remote links in the note with a visible notice.
 - MIME allowlist (PNG/JPEG/GIF/WebP/BMP — no SVG), 20 MB per image, 50
-  images per page, 100 MB total per import, sequential downloads.
+  images per page, 100 MB total per import, sequential downloads, 30-second
+  soft timeout per download. Obsidian's network API cannot abort an
+  in-flight request, so a timed-out download may still complete at the
+  network layer — but its result is permanently discarded and can never
+  create a vault file or receive further processing.
 - Attachment filenames are deterministic plugin-generated names
   (`confluence-<pageId>-<hash>.<ext>`) — no untrusted path components ever
   reach the filesystem. Files are written through Obsidian's vault API into

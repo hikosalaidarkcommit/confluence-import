@@ -313,7 +313,24 @@ export class ConfluenceSyncService {
                         // Record which remote version this pull was based on.
                         // Uses processFrontMatter so ONLY confluence-version is
                         // touched — all other properties are left intact.
-                        await this.updateVersionInFrontmatter(file, remotePage.version.number);
+                        //
+                        // CONSISTENCY: the note body was already written. If the
+                        // version update fails, content and version metadata
+                        // would disagree, so we attempt a SAFE rollback — full
+                        // transactionality is impossible with two separate
+                        // writes, so safety is bounded by a re-read compare.
+                        try {
+                            await this.updateVersionInFrontmatter(file, remotePage.version.number);
+                        } catch (versionError) {
+                            await this.recoverFromVersionUpdateFailure(
+                                file, fullContent, snapshotContent, imageSummary, imageImporter
+                            );
+                            this.logger.error('Version metadata update failed', versionError);
+                            // '⚠' prefix: recovery already showed the precise
+                            // Notice — suppress the generic error Notice while
+                            // still keeping the modal open for retry.
+                            throw new Error('⚠ Version metadata update failed — see notice.');
+                        }
 
                         if (imageSummary && (imageSummary.imported + imageSummary.reused + imageSummary.failed + imageSummary.keptRemote) > 0) {
                             new Notice(
@@ -477,6 +494,99 @@ export class ConfluenceSyncService {
             result = result.split(ref.token).join(replacement);
         }
         return result;
+    }
+
+    /**
+     * Recovery when the note body write succeeded but the frontmatter
+     * version update failed. Decision table:
+     *
+     * | Current note state (re-read)        | Action                                             |
+     * |-------------------------------------|----------------------------------------------------|
+     * | exactly equals just-applied content | roll note back to original snapshot; trash ONLY    |
+     * |                                     | attachments created this attempt (reused kept)     |
+     * | anything else (user edited already) | keep current note & attachments; high-severity     |
+     * |                                     | Notice: version metadata failed, re-sync required  |
+     * | rollback modify itself fails        | keep current state; high-severity Notice           |
+     *
+     * Full transactionality is impossible (two separate writes); this keeps
+     * the note either fully old or fully new, and never overwrites a user
+     * edit that happened after the body write.
+     */
+    private async recoverFromVersionUpdateFailure(
+        file: TFile,
+        appliedContent: string,
+        originalSnapshot: string,
+        imageSummary: ImageImportSummary | null,
+        imageImporter: ImageImporter
+    ): Promise<void> {
+        this.logger.error('Frontmatter version update failed after note write; attempting safe recovery');
+
+        let current: string;
+        try {
+            current = await this.app.vault.read(file);
+        } catch {
+            new Notice(
+                '❌ 版本資訊更新失敗,且無法讀取目前筆記狀態。筆記內容已更新,' +
+                '但 confluence-version 未更新 — 請重新執行匯入以修正版本資訊。',
+                12000
+            );
+            return;
+        }
+
+        if (current === appliedContent) {
+            // Safe to roll back: nobody touched the note since our write.
+            try {
+                await this.app.vault.modify(file, originalSnapshot);
+            } catch {
+                new Notice(
+                    '❌ 版本資訊更新失敗,且筆記回滾也失敗。筆記目前是新內容,' +
+                    '但 confluence-version 未更新 — 請重新執行匯入。',
+                    12000
+                );
+                return;
+            }
+            // Note restored to the original snapshot (including its original
+            // frontmatter/version). Now trash only files created this attempt.
+            if (imageSummary) {
+                const orphans = await this.rollbackAttachmentsReportingOrphans(imageSummary, imageImporter);
+                if (orphans.length > 0) {
+                    new Notice(
+                        `⚠ 已回滾筆記,但 ${orphans.length} 個附件檔案無法移至垃圾桶,請手動清理:` +
+                        orphans.join('、'),
+                        12000
+                    );
+                }
+            }
+            new Notice(
+                '⚠ 版本資訊更新失敗,筆記已安全回滾為原始內容。請重新執行匯入。',
+                10000
+            );
+        } else {
+            // The note changed after our write — do NOT overwrite the user.
+            new Notice(
+                '❌ 版本資訊更新失敗(筆記內容已是新版本且其後已有變動,未回滾)。' +
+                'confluence-version 未更新 — 下次匯入會重新比較;請重新執行匯入以修正版本資訊。',
+                12000
+            );
+        }
+    }
+
+    /** Rollback wrapper that reports paths it could not trash. */
+    private async rollbackAttachmentsReportingOrphans(
+        summary: ImageImportSummary,
+        importer: ImageImporter
+    ): Promise<string[]> {
+        const before = [...summary.createdPaths];
+        await importer.rollback(summary);
+        // rollback() clears createdPaths for successfully trashed files and
+        // logs failures; verify which paths still exist to report orphans.
+        const orphans: string[] = [];
+        for (const path of before) {
+            if (this.app.vault.getAbstractFileByPath(path)) {
+                orphans.push(path);
+            }
+        }
+        return orphans;
     }
 
     private async updateVersionInFrontmatter(file: TFile, newVersion: number): Promise<void> {

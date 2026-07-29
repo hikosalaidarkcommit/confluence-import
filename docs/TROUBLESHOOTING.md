@@ -63,6 +63,22 @@ Each note allows one import at a time, covering the whole fetch → preview →
 apply flow. Finish or cancel the open preview before starting another import
 on the same note. Imports on different notes are independent.
 
+### An image shows "下載逾時" (download timed out)
+
+Each image download has a 30-second soft limit. Slow networks or very large
+attachments can exceed it. The note text still updates; the image stays as a
+remote link with a callout. Re-run the import to retry — a previously
+timed-out image is downloaded again (its late result from the earlier
+attempt is discarded and never written).
+
+### "版本資訊更新失敗" (version metadata update failed)
+
+The note body was written but the `confluence-version` frontmatter update
+failed. The plugin then either safely rolled your note back to its previous
+content (if nothing else had touched it) or kept the new content if you had
+already edited it. In both cases, run the import again — the version marker
+is corrected on the next successful pull. Nothing was sent to Confluence.
+
 ## Content and formatting
 
 ### The same diff preview keeps appearing on every import
