@@ -199,9 +199,11 @@ export class ImageImporter {
     ): Promise<{ data: ArrayBuffer; contentType: string }> {
         const download = this.apiClient.downloadBinary(absoluteUrl);
 
-        let timer: ReturnType<typeof setTimeout> | undefined;
+        // window.setTimeout (not the global) for popout-window compatibility
+        // per Obsidian plugin guidelines; returns a number in DOM typings.
+        let timer: number | undefined;
         const timeout = new Promise<never>((_, reject) => {
-            timer = setTimeout(() => reject(new ImageTimeoutError()), this.downloadTimeoutMs);
+            timer = window.setTimeout(() => reject(new ImageTimeoutError()), this.downloadTimeoutMs);
         });
 
         try {
@@ -218,7 +220,7 @@ export class ImageImporter {
             }
             throw e;
         } finally {
-            if (timer !== undefined) clearTimeout(timer);
+            if (timer !== undefined) window.clearTimeout(timer);
         }
     }
 

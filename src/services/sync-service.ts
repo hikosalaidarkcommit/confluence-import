@@ -1,5 +1,5 @@
 import { App, TFile, Notice } from 'obsidian';
-import { ConfluenceSettings, DiffResult, RemoteImageRef } from '../models';
+import { ConfluenceSettings, DiffResult } from '../models';
 import { ConfluenceUrlParser } from '../api/url-parser';
 import { ConfluenceApiClient, ConfluenceApiError } from '../api/confluence-client';
 import { CachedPageResolver, ConfluencePageResolver } from '../api/page-resolver';

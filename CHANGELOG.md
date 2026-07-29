@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.18] - 2026-07-24
+### Fixed
+- Community review cleanups: image download timeout now uses `window.setTimeout`/`window.clearTimeout` (popout-window compatibility per Obsidian plugin guidelines) instead of the global timer APIs, and an unused type import was removed from the sync service. No behavior change.
+
 ## [1.0.17] - 2026-07-24
 ### Added
 - **Image import** (new setting "Import images", default on): images attached to the Confluence page are downloaded into the vault's configured default attachment location and embedded with local links generated via Obsidian's link APIs. Repeat imports reuse previously imported files through deterministic `confluence-<pageId>-<hash>` filenames instead of duplicating.

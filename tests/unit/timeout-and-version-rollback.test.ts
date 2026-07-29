@@ -5,7 +5,17 @@
  *  B. Frontmatter version failure after body write — safe rollback decision
  *     table (rollback when untouched; keep when user edited; report orphans;
  *     reused files never trashed; no success notice; lock released).
+ *
+ * The importer uses window.setTimeout/window.clearTimeout (Obsidian popout
+ * guideline). Node test env has no `window`, so expose one backed by the
+ * globals — Jest fake timers patch the global functions, and this shim
+ * resolves them lazily so fake timers still control the clock.
  */
+(globalThis as Record<string, unknown>).window = (globalThis as Record<string, unknown>).window ?? {
+    setTimeout: (...args: Parameters<typeof setTimeout>) => setTimeout(...args),
+    clearTimeout: (...args: Parameters<typeof clearTimeout>) => clearTimeout(...args),
+};
+
 import {
     ImageImporter,
     IMAGE_DOWNLOAD_TIMEOUT_MS,

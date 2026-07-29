@@ -84,7 +84,7 @@ the wrong tool — it has no write capability (see
 4. Click Install and then Enable
 
 ### Manual Installation
-1. Get the release archive `confluence-import-1.0.16.zip` (or the three
+1. Get the release archive `confluence-import-1.0.18.zip` (or the three
    files `main.js`, `manifest.json`, `styles.css`).
 2. Create a folder `confluence-import` in your vault's `.obsidian/plugins/` directory.
 3. Extract/put the three files flat in that folder.

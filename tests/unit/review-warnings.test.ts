@@ -78,6 +78,32 @@ describe('review warning pattern roots eliminated', () => {
         expect(tsconfig.compilerOptions.lib).toContain('ES2020');
         expect(tsconfig.compilerOptions.lib).not.toContain('ES6');
     });
+
+    test('9. timer APIs use window.setTimeout/clearTimeout (popout compatibility)', () => {
+        // Obsidian review: global setTimeout/clearTimeout/setInterval break
+        // in popout windows; the window-scoped variants must be used.
+        for (const f of files) {
+            const content = read(f);
+            // Any timer call NOT preceded by `window.` is a violation.
+            const bareTimer = /(?<!window\.)(?<!\w)(setTimeout|clearTimeout|setInterval|clearInterval)\s*\(/;
+            // Type positions like ReturnType<typeof setTimeout> are also
+            // disallowed since we standardize on number handles.
+            const typeUse = /ReturnType<typeof (setTimeout|setInterval)>/;
+            expect({ f, hit: bareTimer.test(content) }).toEqual({ f, hit: false });
+            expect({ f, hit: typeUse.test(content) }).toEqual({ f, hit: false });
+        }
+    });
+
+    test('10. no unused RemoteImageRef import in sync-service', () => {
+        const sync = read('src/services/sync-service.ts');
+        const importsIt = /import[^;]*RemoteImageRef[^;]*from '\.\.\/models'/.test(sync);
+        if (importsIt) {
+            // If imported, it must actually be referenced in code.
+            const body = sync.replace(/import[^;]+;/g, '');
+            expect(body.includes('RemoteImageRef')).toBe(true);
+        }
+        expect(true).toBe(true);
+    });
 });
 
 describe('parseStoredSettings (loadData runtime validation)', () => {
