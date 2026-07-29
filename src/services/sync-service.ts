@@ -1,5 +1,5 @@
 import { App, TFile, Notice } from 'obsidian';
-import { ConfluenceSettings, DiffResult } from '../models';
+import { ConfluenceSettings, DiffResult, RemoteImageRef } from '../models';
 import { ConfluenceUrlParser } from '../api/url-parser';
 import { ConfluenceApiClient, ConfluenceApiError } from '../api/confluence-client';
 import { CachedPageResolver, ConfluencePageResolver } from '../api/page-resolver';
@@ -159,9 +159,17 @@ export class ConfluenceSyncService {
 
             // Step 5: Resolve attachment metadata (GET only) before diff
             let attachmentLinks: Map<string, { download: string; version: number }> | undefined;
+            const diffEngine = new DiffEngine(this.logger);
+
             if (this.settings.importImages) {
                 try {
-                    attachmentLinks = await apiClient.getAttachmentDownloadLinks(pageInfo.pageId);
+                    // Extract needed filenames from remote storage to fetch only relevant metadata pages.
+                    const dummyImageRefs = diffEngine.extractImageRefs(remotePage.body.storage.value);
+                    const neededFilenames = new Set(
+                        dummyImageRefs.filter(ref => ref.kind === 'attachment' && ref.filename).map(ref => ref.filename!)
+                    );
+
+                    attachmentLinks = await apiClient.getAttachmentDownloadLinks(pageInfo.pageId, neededFilenames);
                 } catch (e) {
                     this.logger.warn('Attachment metadata fetch failed', {
                         status: e instanceof ConfluenceApiError ? e.status : undefined,
@@ -171,7 +179,6 @@ export class ConfluenceSyncService {
 
             // Step 6: Perform diff with version-aware image identity
             new Notice('🔄 Checking for conflicts...');
-            const diffEngine = new DiffEngine(this.logger);
             const diffResult = await diffEngine.compare(
                 localBody,
                 remotePage.body.storage.value,

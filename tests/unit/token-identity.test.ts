@@ -1,111 +1,199 @@
 /**
  * @jest-environment jsdom
  * 
- * Test if identity comparison works correctly for pages with images.
- * If remote has tokens and local has final links, they should be treated as identical
- * if the text and image order match.
+ * Test if identity comparison works correctly for pages with images using
+ * the explicit identity marker.
  */
-import { DiffEngine } from '../../src/diff/diff-engine';
+import { DiffEngine, buildImageMarker } from '../../src/diff/diff-engine';
 
-describe('Image Token Identity', () => {
-    test('local note with final links and remote with tokens are detected as identical', async () => {
+describe('Image Token Identity (Marker-based)', () => {
+    const pageId = '123';
+    const baseUrl = 'https://example.atlassian.net';
+    
+    function getIdentity(filename: string, version: number) {
+        return `attachment:${pageId}:/dl/${filename}:${version}`;
+    }
+
+    test('local note with final links and marker are detected as identical (wiki link)', async () => {
         const engine = new DiffEngine();
-        const pageId = '123';
-        
-        // Attachment metadata with version
-        const attachmentLinks = new Map([
-            ['a.png', { download: '/dl/a.png', version: 5 }]
-        ]);
-        
-        // Remote storage with one image
+        const attachmentLinks = new Map([['a.png', { download: '/dl/a.png', version: 5 }]]);
         const storage = '<p>Hello</p><ac:image><ri:attachment ri:filename="a.png"/></ac:image><p>World</p>';
         
-        // Local note from a PREVIOUS sync (tokens replaced with deterministic local links)
-        // Identity includes pageId:123, download:/dl/a.png, version:5
-        // Hash for "attachment:123:/dl/a.png:5" is deterministic.
-        const identity = 'attachment:123:/dl/a.png:5';
-        const expectedName = (engine as any).buildExpectedFilename(pageId, identity, 'a.png');
-        const local = `Hello\n\n![[${expectedName}]]\n\nWorld`;
+        const identity = getIdentity('a.png', 5);
+        const marker = buildImageMarker(identity);
+        // Path independence: works even with a folder path in the link
+        const local = `Hello\n\n![[attachments/a.png]] ${marker}\n\nWorld`;
         
-        const result = await engine.compare(local, storage, pageId, attachmentLinks);
-        
-        // This must be TRUE to avoid false diffs on every pull
+        const result = await engine.compare(local, storage, pageId, attachmentLinks, baseUrl);
         expect(result.isIdentical).toBe(true);
     });
 
-    test('same filename but different version is detected as different', async () => {
+    test('local note with markdown link and marker are detected as identical', async () => {
         const engine = new DiffEngine();
-        const pageId = '123';
-        
-        // Current remote version is 6
-        const attachmentLinks = new Map([
-            ['a.png', { download: '/dl/a.png', version: 6 }]
-        ]);
+        const attachmentLinks = new Map([['a.png', { download: '/dl/a.png', version: 5 }]]);
         const storage = '<ac:image><ri:attachment ri:filename="a.png"/></ac:image>';
         
-        // Local note has version 5
-        const oldIdentity = 'attachment:123:/dl/a.png:5';
-        const oldName = (engine as any).buildExpectedFilename(pageId, oldIdentity, 'a.png');
-        const local = `![[${oldName}]]`;
+        const identity = getIdentity('a.png', 5);
+        const marker = buildImageMarker(identity);
+        // Markdown link style
+        const local = `![a.png](attachments/a.png) ${marker}`;
         
-        const result = await engine.compare(local, storage, pageId, attachmentLinks);
+        const result = await engine.compare(local, storage, pageId, attachmentLinks, baseUrl);
+        expect(result.isIdentical).toBe(true);
+    });
+
+    test('supports aliases and width in wiki links', async () => {
+        const engine = new DiffEngine();
+        const attachmentLinks = new Map([['a.png', { download: '/dl/a.png', version: 5 }]]);
+        const storage = '<ac:image><ri:attachment ri:filename="a.png"/></ac:image>';
         
-        // Must be FALSE: different version means different content, must pull.
+        const identity = getIdentity('a.png', 5);
+        const marker = buildImageMarker(identity);
+        // Wiki link with width
+        const local = `![[a.png|300]] ${marker}`;
+        
+        const result = await engine.compare(local, storage, pageId, attachmentLinks, baseUrl);
+        expect(result.isIdentical).toBe(true);
+    });
+
+    test('link without marker is NOT identical', async () => {
+        const engine = new DiffEngine();
+        const attachmentLinks = new Map([['a.png', { download: '/dl/a.png', version: 5 }]]);
+        const storage = '<ac:image><ri:attachment ri:filename="a.png"/></ac:image>';
+        
+        // Link exists but marker is missing
+        const local = `![[a.png]]`;
+        
+        const result = await engine.compare(local, storage, pageId, attachmentLinks, baseUrl);
         expect(result.isIdentical).toBe(false);
     });
 
-    test('external URL unchanged is detected as identical', async () => {
+    test('marker without link is NOT identical', async () => {
+        const engine = new DiffEngine();
+        const attachmentLinks = new Map([['a.png', { download: '/dl/a.png', version: 5 }]]);
+        const storage = '<ac:image><ri:attachment ri:filename="a.png"/></ac:image>';
+        
+        const identity = getIdentity('a.png', 5);
+        const marker = buildImageMarker(identity);
+        const local = `Just the marker ${marker}`;
+        
+        const result = await engine.compare(local, storage, pageId, attachmentLinks, baseUrl);
+        expect(result.isIdentical).toBe(false);
+    });
+
+    test('mismatched marker hash is NOT identical', async () => {
+        const engine = new DiffEngine();
+        const attachmentLinks = new Map([['a.png', { download: '/dl/a.png', version: 5 }]]);
+        const storage = '<ac:image><ri:attachment ri:filename="a.png"/></ac:image>';
+        
+        const wrongIdentity = getIdentity('a.png', 4); // old version
+        const marker = buildImageMarker(wrongIdentity);
+        const local = `![[a.png]] ${marker}`;
+        
+        const result = await engine.compare(local, storage, pageId, attachmentLinks, baseUrl);
+        expect(result.isIdentical).toBe(false);
+    });
+
+    test('external URL identical with marker', async () => {
         const engine = new DiffEngine();
         const url = 'https://other.site/img.png';
         const storage = `<ac:image><ri:url ri:value="${url}"/></ac:image>`;
-        const local = `![image](${url})`;
         
-        const result = await engine.compare(local, storage, '123');
+        const identity = `url:${url}`;
+        const marker = buildImageMarker(identity);
+        const local = `![image](${url}) ${marker}`;
+        
+        const result = await engine.compare(local, storage, pageId, undefined, baseUrl);
         expect(result.isIdentical).toBe(true);
     });
 
-    test('different image order is detected as different', async () => {
+    test('external URL different link title remains identical if marker matches', async () => {
         const engine = new DiffEngine();
-        const pageId = '123';
-        const attachmentLinks = new Map([
-            ['1.png', { download: '/dl/1.png', version: 1 }],
-            ['2.png', { download: '/dl/2.png', version: 1 }]
-        ]);
-        const storage = '<p>A</p><ac:image><ri:attachment ri:filename="1.png"/></ac:image><p>B</p><ac:image><ri:attachment ri:filename="2.png"/></ac:image>';
+        const url = 'https://other.site/img.png';
+        const storage = `<ac:image><ri:url ri:value="${url}"/></ac:image>`;
         
-        const name1 = (engine as any).buildExpectedFilename(pageId, 'attachment:123:/dl/1.png:1', '1.png');
-        const name2 = (engine as any).buildExpectedFilename(pageId, 'attachment:123:/dl/2.png:1', '2.png');
-        const local = `A\n\n![[${name2}]]\n\nB\n\n![[${name1}]]`;
+        const identity = `url:${url}`;
+        const marker = buildImageMarker(identity);
+        // User changed link title from "image" to "my pic"
+        const local = `![my pic](${url}) ${marker}`;
         
-        const result = await engine.compare(local, storage, pageId, attachmentLinks);
+        const result = await engine.compare(local, storage, pageId, undefined, baseUrl);
+        expect(result.isIdentical).toBe(true);
+    });
+
+    test('unrelated image remains different', async () => {
+        const engine = new DiffEngine();
+        const local = '![[manual.png]]\n\nSome text';
+        const storage = '<p>Some text</p>';
+        const result = await engine.compare(local, storage, pageId);
         expect(result.isIdentical).toBe(false);
     });
 
-    test('missing version falls back to canonical URL identity', async () => {
+    test('unrelated comment remains different', async () => {
         const engine = new DiffEngine();
-        const pageId = '123';
-        
-        // Metadata missing version (legacy or DC)
-        const attachmentLinks = new Map([
-            ['a.png', { download: '/dl/a.png' } as any]
-        ]);
-        
-        const storage = '<ac:image><ri:attachment ri:filename="a.png"/></ac:image>';
-        
-        // Identity uses pageId + download as fallback if version is missing
-        const fallbackIdentity = 'attachment:123:/dl/a.png';
-        const expectedName = (engine as any).buildExpectedFilename(pageId, fallbackIdentity, 'a.png');
-        const local = `![[${expectedName}]]`;
-        
-        const result = await engine.compare(local, storage, pageId, attachmentLinks);
-        expect(result.isIdentical).toBe(true);
+        const local = '<!-- some other comment -->\n\nSome text';
+        const storage = '<p>Some text</p>';
+        const result = await engine.compare(local, storage, pageId);
+        expect(result.isIdentical).toBe(false);
     });
 
-    test('placeholder-like user text is unaffected', async () => {
+    test('marker abuse: user typing a literal placeholder token stays a difference', async () => {
         const engine = new DiffEngine();
-        const local = 'This text contains %%CFIMG-abc-0%% but it is just text.';
-        const storage = '<p>This text contains %%CFIMG-abc-0%% but it is just text.</p>';
-        const result = await engine.compare(local, storage, '123');
-        expect(result.isIdentical).toBe(true);
+        const attachmentLinks = new Map([['a.png', { download: '/dl/a.png', version: 5 }]]);
+        const storage = '<ac:image><ri:attachment ri:filename="a.png"/></ac:image>';
+
+        // A user pasting the raw %%CFIMG-…%% token text (matching the remote
+        // placeholder) without link+marker must NOT count as identical.
+        const identity = getIdentity('a.png', 5);
+        const engineForToken = await engine.compare('', storage, pageId, attachmentLinks, baseUrl);
+        const token = engineForToken.imageRefs[0].token;
+        const local = `${token}`;
+
+        const result = await engine.compare(local, storage, pageId, attachmentLinks, baseUrl);
+        // Local literal token vs remote token: raw text equality would call
+        // them identical, but link+marker pairing is required.
+        expect(result.isIdentical).toBe(false);
+        void identity;
+    });
+
+    test('marker separated from link by a blank line is NOT adjacent → difference', async () => {
+        const engine = new DiffEngine();
+        const attachmentLinks = new Map([['a.png', { download: '/dl/a.png', version: 5 }]]);
+        const storage = '<ac:image><ri:attachment ri:filename="a.png"/></ac:image>';
+
+        const marker = buildImageMarker(getIdentity('a.png', 5));
+        const local = `![[a.png]]\n\n${marker}`;
+
+        const result = await engine.compare(local, storage, pageId, attachmentLinks, baseUrl);
+        expect(result.isIdentical).toBe(false);
+    });
+
+    test('edited link text with matching marker still identical; edited marker not', async () => {
+        const engine = new DiffEngine();
+        const attachmentLinks = new Map([['a.png', { download: '/dl/a.png', version: 5 }]]);
+        const storage = '<ac:image><ri:attachment ri:filename="a.png"/></ac:image>';
+        const marker = buildImageMarker(getIdentity('a.png', 5));
+
+        // Renamed/moved file in the link — marker is the identity anchor.
+        const moved = await engine.compare(`![[assets/renamed.png]] ${marker}`, storage, pageId, attachmentLinks, baseUrl);
+        expect(moved.isIdentical).toBe(true);
+
+        // Corrupted marker hash → difference.
+        const corrupted = marker.replace(/[0-9a-f]{16}/, '0'.repeat(16));
+        const bad = await engine.compare(`![[a.png]] ${corrupted}`, storage, pageId, attachmentLinks, baseUrl);
+        expect(bad.isIdentical).toBe(false);
+    });
+
+    test('repeated unchanged pulls stay identical (idempotent)', async () => {
+        const engine = new DiffEngine();
+        const attachmentLinks = new Map([['a.png', { download: '/dl/a.png', version: 5 }]]);
+        const storage = '<p>Text</p><ac:image><ri:attachment ri:filename="a.png"/></ac:image>';
+        const marker = buildImageMarker(getIdentity('a.png', 5));
+        const local = `Text\n\n![[attachments/a.png]] ${marker}`;
+
+        const r1 = await engine.compare(local, storage, pageId, attachmentLinks, baseUrl);
+        const r2 = await engine.compare(local, storage, pageId, attachmentLinks, baseUrl);
+        expect(r1.isIdentical).toBe(true);
+        expect(r2.isIdentical).toBe(true);
     });
 });

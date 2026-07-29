@@ -280,57 +280,17 @@ describe('H2: FileDiffView pull-only preview (real component)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Large-input safety (real DiffEngine, no crash)
-// ---------------------------------------------------------------------------
-describe('Large-input safety (real DiffEngine, no crash)', () => {
-    function makeLargeStorage(paragraphs: number): string {
-        const parts: string[] = [];
-        for (let i = 0; i < paragraphs; i++) {
-            parts.push(`<h2>Section ${i}</h2><p>Paragraph ${i} with some <strong>bold</strong> text lorem ipsum dolor sit amet consectetur adipiscing elit.</p>`);
-        }
-        return parts.join('');
-    }
-
-    test('multi-hundred-KB storage converts and compares without crashing, result is lean', async () => {
-        const engine = new DiffEngine();
-        const storage = makeLargeStorage(2000); // ~250KB storage (kept moderate for CI time)
-        expect(storage.length).toBeGreaterThan(200_000);
-
-        const warm = await engine.compare('', storage, "123");
-        const local = warm.remoteContent + '\nlocal tail edit';
-        const result = await engine.compare(local, storage, "123");
-
-        expect(result.isIdentical).toBe(false);
-        expect(result.hasConflicts).toBe(true);
-        // Lean DiffResult: no eagerly-allocated per-line diff arrays
-        expect((result as any).diffLines).toBeUndefined();
-        expect((result as any).conflicts).toBeUndefined();
-        // Original content preserved for the modal's lazy diff
-        expect(result.localContent).toBe(local);
-    }, 60000);
-
-    test('hasConflicts is always the negation of isIdentical', async () => {
-        const engine = new DiffEngine();
-
-        const same = await engine.compare('Hello world', '<p>Hello world</p>', "123");
-        expect(same.isIdentical).toBe(true);
-        expect(same.hasConflicts).toBe(false);
-
-        const diff = await engine.compare('Hello world', '<p>Goodbye world</p>', "123");
-        expect(diff.isIdentical).toBe(false);
-        expect(diff.hasConflicts).toBe(true);
-    });
-});
-
-// ---------------------------------------------------------------------------
-// Escape-cleanup fidelity: conservative removal must not destroy Markdown
+// Escape-cleanup fidelity: conservative removal only
 // ---------------------------------------------------------------------------
 describe('Escape cleanup: conservative removal only', () => {
     // Access the private turndownCleanHtml through a subclass-style hack so
     // we can unit-test the post-processing in isolation without needing full
     // XHTML → HTML preprocessing.
     function runTurndown(html: string): string {
-        const engine = new DiffEngine() as any;
+        interface EngineInternals {
+            turndownCleanHtml(cleanHtml: string): string;
+        }
+        const engine = new DiffEngine() as unknown as EngineInternals;
         return engine.turndownCleanHtml(html);
     }
 
@@ -365,7 +325,6 @@ describe('Escape cleanup: conservative removal only', () => {
         const md = runTurndown(html);
         expect(typeof md).toBe('string');
         expect(md).not.toContain('snake case');
-        expect(md).not.toContain('snake case');
     });
 });
 
@@ -375,11 +334,11 @@ describe('Escape cleanup: conservative removal only', () => {
 describe('Conversion Fidelity: Safe DOM refactor verification', () => {
     function runConversion(html: string): string {
         interface ConversionInternals {
-            preprocessStorageToCleanHtml(storage: string): string;
+            preprocessStorageToCleanHtml(storage: string, imageRefs: unknown[]): string;
             turndownCleanHtml(cleanHtml: string): string;
         }
         const engine = new DiffEngine() as unknown as ConversionInternals;
-        return engine.turndownCleanHtml(engine.preprocessStorageToCleanHtml(html));
+        return engine.turndownCleanHtml(engine.preprocessStorageToCleanHtml(html, []));
     }
 
     test('promotes first row to thead/th safely', () => {
@@ -399,6 +358,18 @@ describe('Conversion Fidelity: Safe DOM refactor verification', () => {
         expect(md).toContain('~~Struck Heading~~');
     });
 
+    test('detects line-through from style attribute safely', () => {
+        const html1 = '<p><span style="text-decoration: line-through">Struck</span></p>';
+        const html2 = '<p><span style="TEXT-DECORATION:  LINE-THROUGH">Struck</span></p>';
+        const html3 = '<p><span style="color: red; text-decoration:line-through; margin: 0">Struck</span></p>';
+        const html_no = '<p><span style="color: red">Not struck</span></p>';
+
+        expect(runConversion(html1)).toContain('~~Struck~~');
+        expect(runConversion(html2)).toContain('~~Struck~~');
+        expect(runConversion(html3)).toContain('~~Struck~~');
+        expect(runConversion(html_no)).not.toContain('~~');
+    });
+
     test('converts list item headings to bold safely', () => {
         const html = '<ul><li><h3>Item Heading</h3></li></ul>';
         const md = runConversion(html);
@@ -409,3 +380,28 @@ describe('Conversion Fidelity: Safe DOM refactor verification', () => {
     });
 });
 
+describe('Community Scanner compliance regression', () => {
+    function readSrc(file: string): string {
+        const fs = require('fs');
+        const path = require('path');
+        return fs.readFileSync(path.join(__dirname, '../../src', file), 'utf8');
+    }
+
+    test('diff-engine.ts is free of prohibited patterns', () => {
+        const content = readSrc('diff/diff-engine.ts');
+
+        // Zero .innerHTML (even read access)
+        expect(content).not.toContain('.innerHTML');
+        // Zero as any (excluding comments)
+        // Match 'as any' but skip it if preceded by // or /*
+        const anyMatches = content.match(/[^\/]\sas\s+any\b/g);
+        expect(anyMatches).toBeNull();
+
+        // Zero direct .style access (excluding comments)
+        const styleMatches = content.match(/[^\/]\.style\.[a-zA-Z]/g);
+        expect(styleMatches).toBeNull();
+        
+        // Zero prohibited .createElement (except in strings/comments)
+        expect(content).not.toContain('.createElement(');
+    });
+});

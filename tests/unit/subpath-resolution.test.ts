@@ -3,7 +3,7 @@
  * 
  * Test for context-path (subpath) resolution in ImageImporter.
  */
-import { resolveDownloadUrl } from '../../src/services/image-importer';
+import { resolveDownloadUrl } from '../../src/utils/url-utils';
 
 describe('Context Path Resolution', () => {
     test('resolveDownloadUrl handles base URLs with subpaths correctly', () => {

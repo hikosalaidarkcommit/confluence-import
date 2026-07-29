@@ -172,45 +172,83 @@ export class ConfluenceApiClient {
   // write endpoints without revisiting the pull-only contract and its tests.
 
   /**
-   * List image attachments of a page (GET only). Returns a map from
-   * attachment filename to its canonical download link taken from the API's
-   * `_links.download` and its version number.
-   * download URLs are NEVER guessed from path patterns.
-   * Response shape is validated; entries with unusable shapes are skipped
-   * (the caller then fails that image with a remote-link callout).
+   * List image attachments of a page (GET only). Fetches all pages of
+   * attachments (max 50 unique filenames referenced in content) until all
+   * are resolved or no next page exists. Download URLs are NEVER guessed.
+   * Response shape is validated per page.
    */
-  async getAttachmentDownloadLinks(pageId: string): Promise<Map<string, { download: string; version: number }>> {
-    const url = `${this.baseUrl}/rest/api/content/${encodeURIComponent(pageId)}/child/attachment?limit=200`;
-    const response = await this.request(url, { method: 'GET' });
+  async getAttachmentDownloadLinks(
+    pageId: string,
+    neededFilenames: Set<string>
+  ): Promise<Map<string, { download: string; version: number }>> {
+    const links = new Map<string, { download: string; version: number }>();
+    if (neededFilenames.size === 0) return links;
 
-    const res = response as Record<string, unknown>;
-    if (response == null || typeof response !== 'object' || !Array.isArray(res.results)) {
-      throw new ConfluenceApiError(
-        0,
-        'Invalid response',
-        'The Confluence attachment API returned an unexpected response shape (missing results array).'
-      );
+    // The importer processes at most 50 image refs per page; clamp the
+    // lookup set to the same bound so a hostile page cannot force extra
+    // metadata paging work.
+    let needed = neededFilenames;
+    if (needed.size > 50) {
+      needed = new Set(Array.from(neededFilenames).slice(0, 50));
     }
 
-    const links = new Map<string, { download: string; version: number }>();
-    for (const entry of res.results) {
-      if (entry == null || typeof entry !== 'object') continue;
-      const e = entry as Record<string, unknown>;
-      const linksObj = e._links as Record<string, unknown> | undefined;
-      const title = e.title;
-      const download = linksObj?.download;
-      const version = (e.version as Record<string, unknown> | undefined)?.number;
+    const limit = 100;
+    let start = 0;
+    let hasMore = true;
+    let pagesFetched = 0;
+    const MAX_PAGES = 10; // Safety cap: 10 pages × 100 = 1000 attachments max
 
-      if (
-        typeof title === 'string' && title.length > 0 &&
-        typeof download === 'string' && download.length > 0 &&
-        typeof version === 'number' && version > 0
-      ) {
-        if (!links.has(title)) {
-          links.set(title, { download, version });
+    while (hasMore && pagesFetched < MAX_PAGES && links.size < needed.size) {
+      const url = `${this.baseUrl}/rest/api/content/${encodeURIComponent(pageId)}/child/attachment?limit=${limit}&start=${start}`;
+      const response = await this.request(url, { method: 'GET' });
+      pagesFetched++;
+
+      const res = response as Record<string, unknown>;
+      if (response == null || typeof response !== 'object' || !Array.isArray(res.results)) {
+        throw new ConfluenceApiError(
+          0,
+          'Invalid response',
+          'The Confluence attachment API returned an unexpected response shape (missing results array).'
+        );
+      }
+
+      for (const entry of res.results) {
+        if (entry == null || typeof entry !== 'object') continue;
+        const e = entry as Record<string, unknown>;
+        const linksObj = e._links as Record<string, unknown> | undefined;
+        const title = e.title;
+        const download = linksObj?.download;
+        const version = (e.version as Record<string, unknown> | undefined)?.number;
+
+        if (
+          typeof title === 'string' && title.length > 0 &&
+          typeof download === 'string' && download.length > 0 &&
+          typeof version === 'number' && version > 0
+        ) {
+          // Duplicate titles can appear (multiple versions listed);
+          // always keep the highest positive version number.
+          if (needed.has(title)) {
+            const existing = links.get(title);
+            if (!existing || version > existing.version) {
+              links.set(title, { download, version });
+            }
+          }
         }
       }
+
+      // Reject non-advancing pagination: a page with zero results that
+      // still claims a `next` link would loop forever on a broken/hostile
+      // server. Our `start` offset is client-controlled so it always
+      // advances, but there is no point continuing past an empty page.
+      if (res.results.length === 0) {
+        break;
+      }
+
+      const linksObj = res._links as Record<string, unknown> | undefined;
+      hasMore = typeof linksObj?.next === 'string';
+      start += limit;
     }
+
     return links;
   }
 

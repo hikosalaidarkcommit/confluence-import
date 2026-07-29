@@ -3,6 +3,7 @@ import { RemoteImageRef, ImageOutcome } from '../models';
 import { ConfluenceApiClient, ConfluenceApiError } from '../api/confluence-client';
 import { deterministicHash } from '../diff/diff-engine';
 import { PluginLogger } from '../utils/logger';
+import { resolveDownloadUrl } from '../utils/url-utils';
 
 /** Per-image size cap: 20 MiB. */
 export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
@@ -10,6 +11,34 @@ export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 export const MAX_IMAGES_PER_PAGE = 50;
 /** Total bytes cap per import: 100 MiB. */
 export const MAX_TOTAL_BYTES = 100 * 1024 * 1024;
+
+/** Marker used to identify images pull-imported by this plugin. */
+export const IMPORT_MARKER_PREFIX = 'confluence-import-image:';
+
+/** Build the deterministic identity string for an image ref. */
+export function buildImageIdentity(
+    pageId: string,
+    ref: RemoteImageRef,
+    meta?: { download: string; version: number },
+    baseUrl?: string
+): string | null {
+    if (ref.kind === 'attachment' && ref.filename && meta) {
+        return meta.version
+            ? `attachment:${pageId}:${meta.download}:${meta.version}`
+            : `attachment:${pageId}:${meta.download}`;
+    }
+    if (ref.kind === 'url' && ref.url && baseUrl) {
+        const resolved = resolveDownloadUrl(baseUrl, ref.url);
+        return `url:${resolved || ref.url}`;
+    }
+    return null;
+}
+
+/** Build the HTML comment marker for a given identity. */
+export function buildImageMarker(identity: string): string {
+    const hash = deterministicHash(identity).slice(0, 16);
+    return `<!-- ${IMPORT_MARKER_PREFIX}${hash} -->`;
+}
 
 /** MIME allowlist → canonical file extension. SVG is deliberately excluded
  * (scriptable content); HTML/unknown types are rejected. */
@@ -95,21 +124,6 @@ export function buildExternalRemoteBlock(ref: RemoteImageRef, remoteUrl: string)
 export function buildAttachmentFilename(pageId: string, sourceIdentity: string, extension: string): string {
     const safePageId = pageId.replace(/[^0-9a-zA-Z]/g, '').slice(0, 20) || 'page';
     return `confluence-${safePageId}-${deterministicHash(sourceIdentity).slice(0, 12)}.${extension}`;
-}
-
-/** Resolve a possibly-relative download link against the configured base;
- * returns null if the result leaves the configured origin. */
-export function resolveDownloadUrl(baseUrl: string, downloadLink: string): string | null {
-    try {
-        const base = new URL(baseUrl);
-        const resolved = new URL(downloadLink, base);
-        if (resolved.origin !== base.origin) return null;
-        if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') return null;
-        if (resolved.username || resolved.password) return null;
-        return resolved.toString();
-    } catch {
-        return null;
-    }
 }
 
 /** Extract the base MIME type from a Content-Type header value. */
@@ -198,7 +212,10 @@ export class ImageImporter {
             // kind === 'attachment' — needs API metadata resolution.
             if (attachmentLinks === null) {
                 try {
-                    attachmentLinks = await this.apiClient.getAttachmentDownloadLinks(pageId);
+                    const neededFilenames = new Set(
+                        refs.filter(r => r.kind === 'attachment' && r.filename).map(r => r.filename!)
+                    );
+                    attachmentLinks = await this.apiClient.getAttachmentDownloadLinks(pageId, neededFilenames);
                 } catch (e) {
                     this.logger.warn('Attachment metadata fetch failed', {
                         status: e instanceof ConfluenceApiError ? e.status : undefined,
@@ -244,7 +261,7 @@ export class ImageImporter {
                 const file = await this.app.vault.createBinary(pending.path, pending.data);
                 outcome.createdPath = file.path;
                 summary.createdPaths.push(file.path);
-                outcome.replacement = this.buildLocalEmbed(file, notePath, outcome.ref);
+                outcome.replacement = this.buildLocalEmbed(file, notePath, outcome.ref, pending.identity);
             } catch (e) {
                 this.logger.warn('Attachment write failed', {
                     reason: e instanceof Error ? e.name : 'unknown',
@@ -293,7 +310,7 @@ export class ImageImporter {
 
     // ---------------------------------------------------------------- private
 
-    private pendingBuffers = new Map<string, { path: string; data: ArrayBuffer; remoteUrl: string }>();
+    private pendingBuffers = new Map<string, { path: string; data: ArrayBuffer; remoteUrl: string; identity: string }>();
 
     private tally(outcome: ImageOutcome, summary: ImageImportSummary): void {
         if (outcome.status === 'imported') summary.imported++;
@@ -325,25 +342,26 @@ export class ImageImporter {
         return `${baseUrl}/pages/viewpageattachments.action?pageId=`;
     }
 
-    private buildLocalEmbed(file: TFile, notePath: string, ref: RemoteImageRef): string {
+    private buildLocalEmbed(file: TFile, notePath: string, ref: RemoteImageRef, identity: string): string {
         const link = this.app.fileManager.generateMarkdownLink(file, notePath);
         // generateMarkdownLink returns a non-embed link for binaries in some
         // configs; ensure embed syntax.
         const embed = link.startsWith('!') ? link : `!${link}`;
+        let finalized = embed;
         if (ref.width) {
             // Obsidian wiki-embed size syntax: ![[file.png|300]]
             if (embed.startsWith('![[') && embed.endsWith(']]')) {
-                return `${embed.slice(0, -2)}|${ref.width}]]`;
+                finalized = `${embed.slice(0, -2)}|${ref.width}]]`;
             }
         }
-        return embed;
+        return `${finalized} ${buildImageMarker(identity)}`;
     }
 
     private async downloadOne(
         ref: RemoteImageRef,
         absoluteUrl: string,
         pageId: string,
-        sourceIdentity: string,
+        identity: string,
         notePath: string,
         totalSoFar: number
     ): Promise<{ outcome: ImageOutcome; status: string; bufferBytes?: number }> {
@@ -396,7 +414,7 @@ export class ImageImporter {
             return { outcome, status: 'failed' };
         }
 
-        const filename = buildAttachmentFilename(pageId, sourceIdentity, extension);
+        const filename = buildAttachmentFilename(pageId, identity, extension);
 
         // Reuse: if a plugin-owned file with the deterministic name already
         // exists anywhere under the attachment path resolution, reuse it.
@@ -412,14 +430,14 @@ export class ImageImporter {
             if (existing instanceof TFile) {
                 const outcome: ImageOutcome = {
                     ref, status: 'reused',
-                    replacement: this.buildLocalEmbed(existing, notePath, ref),
+                    replacement: this.buildLocalEmbed(existing, notePath, ref, identity),
                 };
                 return { outcome, status: 'reused' };
             }
         }
 
         // Buffer for phase 2 (write happens only after the second stale check).
-        this.pendingBuffers.set(ref.token, { path: availablePath, data, remoteUrl: absoluteUrl });
+        this.pendingBuffers.set(ref.token, { path: availablePath, data, remoteUrl: absoluteUrl, identity });
         const outcome: ImageOutcome = {
             ref, status: 'imported',
             // Temporary; finalized in writeBuffers() with the real link.

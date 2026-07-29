@@ -12,8 +12,8 @@ import {
     buildExternalRemoteBlock,
     escapeUrlForMarkdown,
     extensionForMime,
-    resolveDownloadUrl,
 } from '../../src/services/image-importer';
+import { resolveDownloadUrl } from '../../src/utils/url-utils';
 import { deterministicHash, buildImageToken, sanitizeImageText } from '../../src/diff/diff-engine';
 import { ConfluenceApiClient } from '../../src/api/confluence-client';
 import { RemoteImageRef } from '../../src/models';
@@ -295,8 +295,43 @@ describe('write, reuse, rollback', () => {
         const path = (app.vault.createBinary as jest.Mock).mock.calls[0][0] as string;
         expect(path).toMatch(/^attachments\/confluence-12345-[0-9a-f]{12}\.png$/);
         expect(summary.createdPaths).toEqual([path]);
-        // Local embed with width via wiki-embed size syntax
-        expect(summary.outcomes[0].replacement).toMatch(/^!\[\[confluence-12345-[0-9a-f]{12}\.png\|300\]\]$/);
+        // Local embed with width via wiki-embed size syntax and identity marker
+        expect(summary.outcomes[0].replacement).toMatch(/^!\[\[confluence-12345-[0-9a-f]{12}\.png\|300\]\] <!-- confluence-import-image:[0-9a-f]{16} -->$/);
+    });
+
+    test('repeat pull reuses existing deterministic file (no second write, no trash)', async () => {
+        const identity = 'attachment:12345:/download/img.png:1';
+        const hash = deterministicHash(identity).slice(0, 12);
+        const markerHash = deterministicHash(identity).slice(0, 16);
+        const name = `confluence-12345-${hash}.png`;
+        const path = `attachments/${name}`;
+
+        const files: Record<string, TFile> = {};
+        files[path] = new TFile(path);
+
+        const app = makeApp(files);
+        // Simulate Obsidian detecting an existing file and suggesting a suffixed path
+        (app.fileManager.getAvailablePathForAttachment as jest.Mock).mockResolvedValue(`attachments/${name} 1.png`);
+        // Manually seed the files map in the mock vault
+        (app as any).vault.createBinary.mockImplementationOnce(() => { throw new Error('Should not write'); });
+        (app as any).__files.set(path, files[path]);
+
+        const client = makeClient({
+            getAttachmentDownloadLinks: jest.fn().mockResolvedValue(
+                new Map([['img.png', { download: '/download/img.png', version: 1 }]])
+            ),
+        });
+        const importer = new ImageImporter(app as never, client, mockLogger);
+
+        const summary = await importer.downloadAll('12345', [
+            ref({ filename: 'img.png', token: 'TOKEN' }),
+        ], 'note.md');
+
+        expect(summary.imported).toBe(0);
+        expect(summary.reused).toBe(1);
+        expect(summary.outcomes[0].replacement).toContain(name);
+        expect(summary.outcomes[0].replacement).toContain(`<!-- confluence-import-image:${markerHash} -->`);
+        expect(app.vault.createBinary).not.toHaveBeenCalled();
     });
 
     test('repeat pull reuses existing deterministic file (no second write, no trash)', async () => {

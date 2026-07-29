@@ -8,6 +8,9 @@ import { PluginLogger } from '../utils/logger';
 const CALLOUT_TITLE_MAX_LENGTH = 200;
 const IMAGE_ALT_MAX_LENGTH = 120;
 
+/** Marker used to identify images pull-imported by this plugin. */
+const IMPORT_MARKER_PREFIX = 'confluence-import-image:';
+
 /**
  * Deterministic, non-secret content hash (double FNV-1a, 16 hex chars).
  * Used for placeholder tokens and attachment filenames. Pure JS — no Node
@@ -25,6 +28,12 @@ export function deterministicHash(input: string): string {
         h2 = Math.imul(h2, 0x01000193) >>> 0;
     }
     return h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0');
+}
+
+/** Build the HTML comment marker for a given identity. */
+export function buildImageMarker(identity: string): string {
+    const hash = deterministicHash(identity).slice(0, 16);
+    return `<!-- ${IMPORT_MARKER_PREFIX}${hash} -->`;
 }
 
 /**
@@ -103,8 +112,6 @@ export function isSafeHref(rawHref: string): boolean {
 function hasLineThrough(node: HTMLElement): boolean {
     const styleAttr = node.getAttribute('style');
     if (!styleAttr) return false;
-    // Look for text-decoration: line-through with optional spaces, case-insensitive
-    // Matches: "text-decoration:line-through", "TEXT-DECORATION :  LINE-THROUGH", etc.
     return /\btext-decoration\s*:\s*line-through\b/i.test(styleAttr);
 }
 
@@ -136,14 +143,15 @@ export class DiffEngine {
         const normalizedLocal = normalizeMarkdown(localMarkdown);
         const normalizedRemote = normalizeMarkdown(remoteMarkdown);
 
-        // Honest identity comparison: instead of broad-stripping, we check if
-        // the local note contains the EXACT deterministic links we expect
-        // for the current remote image set.
-        let areIdentical = normalizedLocal === normalizedRemote;
+        // A local note must never contain a literal placeholder token —
+        // tokens exist only inside the freshly-converted remote text and are
+        // replaced by link+marker pairs on apply. If a user pastes the raw
+        // token text it must count as a difference, so raw equality is
+        // short-circuited in that case.
+        const localHasLiteralToken = imageRefs.some(ref => normalizedLocal.includes(ref.token));
+        let areIdentical = !localHasLiteralToken && normalizedLocal === normalizedRemote;
 
-        if (!areIdentical && imageRefs.length > 0) {
-            // Check if the only differences are placeholder tokens vs their
-            // corresponding deterministic local links.
+        if (!areIdentical && !localHasLiteralToken && imageRefs.length > 0) {
             let localReplaced = normalizedLocal;
             let remoteReplaced = normalizedRemote;
 
@@ -152,32 +160,36 @@ export class DiffEngine {
                 const token = ref.token;
                 const uniquePlaceholder = `IMG_PLACEHOLDER_${i}`;
 
-                // If the ref was resolved to an attachment, we know exactly
-                // what the local link should be (including version if available).
+                let identity = '';
                 if (ref.kind === 'attachment' && ref.filename) {
                     const meta = attachmentLinks?.get(ref.filename);
                     if (meta) {
                         const download = meta.download;
                         const version = meta.version;
-                        const identity = (pageId && download)
+                        identity = (pageId && download)
                             ? (version ? `attachment:${pageId}:${download}:${version}` : `attachment:${pageId}:${download}`)
                             : `attachment:${ref.filename.trim()}`;
-
-                        const expectedName = this.buildExpectedFilename(pageId, identity, ref.filename);
-                        // Use a conservative pattern that matches what buildLocalEmbed produces
-                        const pattern = new RegExp(`!\\[\\[${expectedName.replace(/\./g, '\\.')}(?:\\|\\d+)?\\]\\]`, 'g');
-                        localReplaced = localReplaced.replace(pattern, uniquePlaceholder);
-                        remoteReplaced = remoteReplaced.replace(token, uniquePlaceholder);
                     }
                 } else if (ref.kind === 'url' && ref.url) {
-                    // External URLs are kept as remote links. We check if the
-                    // local note contains the exact same link.
-                    const alt = ref.alt || 'image';
-                    const safeUrl = ref.url.replace(/[<>`\\]/g, (c) => encodeURIComponent(c));
-                    const expectedLink = `![${alt}](${safeUrl})`;
-                    const escapedLink = expectedLink.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                    localReplaced = localReplaced.replace(new RegExp(escapedLink, 'g'), uniquePlaceholder);
-                    remoteReplaced = remoteReplaced.replace(token, uniquePlaceholder);
+                    identity = `url:${ref.url}`;
+                }
+
+                if (identity) {
+                    const marker = buildImageMarker(identity);
+                    const escapedMarker = marker.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+                    // Adjacency is strict: the marker must follow the image
+                    // link on the SAME line (spaces/tabs only). `\s*` would
+                    // let a marker several blank lines away pair with an
+                    // unrelated earlier image.
+                    const localPattern = new RegExp(
+                        `(!\\[[^\\]\\n]*\\]\\([^)\\n]*\\)|!\\[\\[[^\\]\\n]*\\]\\])[ \\t]*${escapedMarker}`,
+                        'g'
+                    );
+
+                    if (localPattern.test(localReplaced)) {
+                        localReplaced = localReplaced.replace(localPattern, uniquePlaceholder);
+                        remoteReplaced = remoteReplaced.replace(token, uniquePlaceholder);
+                    }
                 }
             }
             areIdentical = localReplaced === remoteReplaced;
@@ -194,40 +206,33 @@ export class DiffEngine {
     }
 
     /**
-     * Replicate buildAttachmentFilename logic without needing ImageImporter.
+     * Lightweight pre-scan: parse the storage XHTML and collect image refs
+     * WITHOUT running the full preprocess/Turndown pipeline. Used by the
+     * sync service to learn which attachment filenames the page references
+     * so attachment metadata pagination can stop as soon as all of them are
+     * resolved. Identity here intentionally omits download/version (metadata
+     * is not fetched yet); only `kind`/`filename` are consumed by callers.
      */
-    private buildExpectedFilename(pageId: string, identity: string, originalName: string): string {
-        const ext = originalName.split('.').pop()?.toLowerCase() || 'bin';
-        const safePageId = pageId.replace(/[^0-9a-zA-Z]/g, '').slice(0, 20) || 'page';
-        return `confluence-${safePageId}-${deterministicHash(identity).slice(0, 12)}.${ext}`;
-    }
-
-    private convertStorageToMarkdown(
-        storageFormat: string,
-        pageId?: string,
-        attachmentLinks?: Map<string, { download: string; version: number }>,
-        baseUrl?: string
-    ): { markdown: string; imageRefs: RemoteImageRef[] } {
-        const imageRefs: RemoteImageRef[] = [];
-        const cleanHtml = this.preprocessStorageToCleanHtml(
-            storageFormat,
-            imageRefs,
-            pageId,
-            attachmentLinks,
-            baseUrl
-        );
-        return { markdown: this.turndownCleanHtml(cleanHtml), imageRefs };
+    extractImageRefs(storageFormat: string): RemoteImageRef[] {
+        const refs: RemoteImageRef[] = [];
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(storageFormat, 'text/html');
+        this.extractImages(doc, refs);
+        return refs;
     }
 
     /**
      * Parse raw Confluence storage into a detached document, apply all DOM
      * pre-processing, and serialize back to a string via XMLSerializer
-     * (no innerHTML access). Node creation goes through Obsidian's createEl
-     * with adoptNode; the remote DOM is never attached to the live document.
+     * (no innerHTML access). Returning a STRING (not the live node) matters
+     * for memory: Turndown clones any node input wholesale (cloneNode(true)),
+     * which would keep two full DOM trees alive at once on large pages. With
+     * a string, the pre-processing document is garbage-collectable before
+     * Turndown builds its own tree.
      */
     private preprocessStorageToCleanHtml(
         storageFormat: string,
-        imageRefs?: RemoteImageRef[],
+        imageRefs: RemoteImageRef[],
         pageId?: string,
         attachmentLinks?: Map<string, { download: string; version: number }>,
         baseUrl?: string
@@ -235,25 +240,19 @@ export class DiffEngine {
         const parser = new DOMParser();
         const doc = parser.parseFromString(storageFormat, 'text/html');
 
-        // 0a. IMAGES: replace every supported image form with a deterministic
-        // unique placeholder token (plain text node). Tokens survive Turndown
-        // untouched; the apply step replaces the exact token strings. The
-        // preview shows the token's readable remote representation without
-        // any network access or rendering.
-        if (imageRefs) {
-            this.extractImages(doc, imageRefs, pageId, attachmentLinks);
-        }
+        this.extractImages(doc, imageRefs, pageId, attachmentLinks);
 
         /**
          * Helper to create nodes using Obsidian's createEl and safely
-         * adopting them into our processing document.
+         * adopting them into our processing document (no direct document
+         * element construction).
          */
         const create = <K extends keyof HTMLElementTagNameMap>(tag: K): HTMLElementTagNameMap[K] => {
             const el = createEl(tag);
             return doc.adoptNode(el);
         };
 
-        // 0. SECURITY: neutralize anchors with dangerous URL schemes
+        // SECURITY: neutralize anchors with dangerous URL schemes
         doc.querySelectorAll('a[href]').forEach(anchor => {
             const href = anchor.getAttribute('href') || '';
             if (!isSafeHref(href)) {
@@ -368,10 +367,10 @@ export class DiffEngine {
         });
 
         doc.querySelectorAll('li').forEach(li => {
-            li.querySelectorAll('p').forEach((p, idx, paragraphs) => {
+            li.querySelectorAll('p').forEach((p, idx) => {
                 const fragment = new DocumentFragment();
                 while (p.firstChild) fragment.appendChild(p.firstChild);
-                if (idx < paragraphs.length - 1) fragment.appendChild(create('br'));
+                if (idx < li.querySelectorAll('p').length - 1) fragment.appendChild(create('br'));
                 p.parentNode?.replaceChild(fragment, p);
             });
         });
@@ -404,22 +403,13 @@ export class DiffEngine {
             .replace(/^<body[^>]*>/i, '')
             .replace(/<\/body>$/i, '')
             // Final cleanup for tag names that may keep colon prefixes in
-            // some environments (same rules as the pre-refactor version).
+            // some environments.
             .replace(/<ac:([\w-]+)/gi, '<$1')
             .replace(/<\/ac:([\w-]+)/gi, '</$1')
             .replace(/<ri:([\w-]+)/gi, '<$1')
             .replace(/<\/ri:([\w-]+)/gi, '</$1');
     }
 
-    /**
-     * Find all supported image forms in the parsed storage document and
-     * replace each with a unique placeholder token text node:
-     *  - <ac:image><ri:attachment ri:filename=".."/></ac:image>
-     *  - <ac:image><ri:url ri:value=".."/></ac:image>
-     *  - standard <img src="..">
-     * Namespaced tag/attribute names may appear with or without prefixes
-     * depending on the DOM parser, so both spellings are queried.
-     */
     private extractImages(
         doc: Document,
         imageRefs: RemoteImageRef[],
@@ -444,7 +434,6 @@ export class DiffEngine {
             node.parentNode?.replaceChild(placeholder, node);
         };
 
-        // ac:image containers (prefix may or may not survive parsing)
         doc.querySelectorAll('ac\\:image, image').forEach(imageEl => {
             const alt = sanitizeImageText(
                 imageEl.getAttribute('ac:alt') ?? imageEl.getAttribute('alt') ?? ''
@@ -464,10 +453,6 @@ export class DiffEngine {
                     const meta = attachmentLinks?.get(filename.trim());
                     const version = meta?.version;
                     const download = meta?.download;
-                    // Honest identity: includes pageId, canonical download URL, and version.
-                    // This ensures that the same filename with a different version or
-                    // on a different page yields a different local link.
-                    // If version is missing (legacy/Server), falls back to download URL.
                     const identity = (pageId && download)
                         ? (version ? `attachment:${pageId}:${download}:${version}` : `attachment:${pageId}:${download}`)
                         : `attachment:${filename.trim()}`;
@@ -493,12 +478,10 @@ export class DiffEngine {
                     return;
                 }
             }
-            // Unresolvable/unsafe image element: drop it, keep alt as text.
             const fallback = doc.createTextNode(alt ? `${alt}` : '');
             imageEl.parentNode?.replaceChild(fallback, imageEl);
         });
 
-        // Standard <img src="..">
         doc.querySelectorAll('img[src]').forEach(img => {
             const src = (img.getAttribute('src') ?? '').trim();
             const alt = sanitizeImageText(img.getAttribute('alt') ?? '');
@@ -593,8 +576,10 @@ export class DiffEngine {
                 const statusEl = node.querySelector('task-status, ac\\:task-status');
                 const status = statusEl?.textContent?.toLowerCase().trim() || '';
                 const isComplete = status === 'complete';
+
                 const bodyEl = node.querySelector('task-body, ac\\:task-body');
                 const taskText = bodyEl?.textContent?.trim() || content.trim();
+
                 const checkbox = isComplete ? '[x]' : '[ ]';
                 return `- ${checkbox} ${taskText}\n`;
             }

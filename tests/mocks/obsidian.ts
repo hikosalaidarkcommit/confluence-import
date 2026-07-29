@@ -23,6 +23,11 @@ export class TFile {
     path = '';
     basename = '';
     extension = 'md';
+    constructor(path = '', basename = '', extension = 'md') {
+        this.path = path;
+        this.basename = basename;
+        this.extension = extension;
+    }
 }
 
 export class Modal {
