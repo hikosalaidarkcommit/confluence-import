@@ -9,6 +9,9 @@
     if (opts?.cls) el.className = opts.cls;
     return el;
 };
+(global as unknown as { createFragment: Function }).createFragment = function () {
+    return document.createDocumentFragment();
+};
 
 const { DiffEngine } = require('../../src/diff/diff-engine');
 

@@ -131,7 +131,7 @@ function isSimpleTable(table: HTMLTableElement): boolean {
     }
 
     // 1. Spans make it complex
-    const cells = Array.from(table.querySelectorAll('td, th')) as HTMLTableCellElement[];
+    const cells = Array.from(table.querySelectorAll('td, th'));
     for (const cell of cells) {
         const rowspan = parseInt(cell.getAttribute('rowspan') || '1', 10);
         const colspan = parseInt(cell.getAttribute('colspan') || '1', 10);
@@ -378,9 +378,13 @@ export class DiffEngine {
             return doc.adoptNode(el);
         };
 
+        // Obsidian's createFragment() global (not doc.createDocumentFragment)
+        // for prefer-create-el compliance; adopt into this document.
+        const createFrag = (): DocumentFragment => doc.adoptNode(createFragment());
+
         // 1. Pre-process Tables
         doc.querySelectorAll('table').forEach(table => {
-            if (isSimpleTable(table as HTMLTableElement)) {
+            if (isSimpleTable(table)) {
                 table.querySelectorAll('colgroup, col').forEach(el => el.remove());
 
                 let thead = table.querySelector('thead');
@@ -403,7 +407,7 @@ export class DiffEngine {
                     // Normalize p/div to content + <br> to keep GFM compatibility
                     const blocks = Array.from(cell.querySelectorAll('p, div'));
                     blocks.forEach((block, idx) => {
-                        const fragment = doc.createDocumentFragment();
+                        const fragment = createFrag();
                         while (block.firstChild) fragment.appendChild(block.firstChild);
                         if (idx < blocks.length - 1) {
                             fragment.appendChild(create('br'));
@@ -481,7 +485,7 @@ export class DiffEngine {
                 if (currentSegment.trim()) segments.push(currentSegment.trim());
 
                 if (segments.length > 1) {
-                    const fragment = doc.createDocumentFragment();
+                    const fragment = createFrag();
                     const newHeading = create(level);
                     newHeading.textContent = segments[0];
                     fragment.appendChild(newHeading);
@@ -506,7 +510,7 @@ export class DiffEngine {
         doc.querySelectorAll('li').forEach(li => {
             const paragraphs = Array.from(li.querySelectorAll('p'));
             paragraphs.forEach((p, idx) => {
-                const fragment = doc.createDocumentFragment();
+                const fragment = createFrag();
                 while (p.firstChild) fragment.appendChild(p.firstChild);
                 if (idx < paragraphs.length - 1) fragment.appendChild(create('br'));
                 p.parentNode?.replaceChild(fragment, p);

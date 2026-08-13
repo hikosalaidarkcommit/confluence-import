@@ -47,6 +47,9 @@ beforeAll(() => {
         applyOpts(el, opts);
         return el;
     };
+    (global as any).createFragment = function () {
+        return document.createDocumentFragment();
+    };
     (global as any).createDiv = function (opts?: any) {
         const el = document.createElement('div');
         applyOpts(el, opts);

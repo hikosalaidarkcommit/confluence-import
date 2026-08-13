@@ -123,7 +123,7 @@ describe('manifest untouched by docs work', () => {
         const manifest = JSON.parse(read('manifest.json')) as Record<string, unknown>;
         expect(manifest.id).toBe('confluence-import');
         expect(manifest.name).toBe('Confluence Page Import');
-        expect(manifest.version).toBe('1.0.19');
+        expect(manifest.version).toBe('1.0.20');
         expect(manifest.minAppVersion).toBe('1.13.0');
         expect(manifest.isDesktopOnly).toBe(true);
     });

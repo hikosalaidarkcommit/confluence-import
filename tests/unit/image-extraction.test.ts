@@ -13,6 +13,8 @@ beforeAll(() => {
         () => document.createElement('div');
     (global as Record<string, unknown>).createSpan =
         () => document.createElement('span');
+    (global as Record<string, unknown>).createFragment =
+        () => document.createDocumentFragment();
     (global as Record<string, unknown>).DocumentFragment = DocumentFragment;
     (global as Record<string, unknown>).XMLSerializer = XMLSerializer;
 });

@@ -1,6 +1,6 @@
 {
   "name": "confluence-import",
-  "version": "1.0.19",
+  "version": "1.0.20",
   "description": "Import Confluence pages as local notes (one-way pull) with a read-only diff preview before anything is written.",
   "main": "main.js",
   "scripts": {
@@ -52,6 +52,6 @@
   },
   "homepage": "https://github.com/hikosalaidarkcommit/confluence-import",
   "overrides": {
-    "brace-expansion": "^5.0.8"
+    "brace-expansion": "^5.0.9"
   }
 }

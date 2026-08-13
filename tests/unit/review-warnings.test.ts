@@ -104,6 +104,18 @@ describe('review warning pattern roots eliminated', () => {
         }
         expect(true).toBe(true);
     });
+
+    test('11. no document.createDocumentFragment in active src (use createFragment)', () => {
+        for (const f of files) {
+            expect({ f, hit: /\.createDocumentFragment\(/.test(read(f)) }).toEqual({ f, hit: false });
+        }
+    });
+
+    test('12. no unnecessary HTMLTableElement/HTMLTableCellElement assertions in diff-engine', () => {
+        const engine = read('src/diff/diff-engine.ts');
+        expect(engine).not.toContain('as HTMLTableElement');
+        expect(engine).not.toContain('as HTMLTableCellElement[]');
+    });
 });
 
 describe('parseStoredSettings (loadData runtime validation)', () => {

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.20] - 2026-07-24
+### Fixed
+- Community review cleanups in the table converter: detached-DOM fragment creation now uses Obsidian's `createFragment()` helper (adopted into the working document) instead of `document.createDocumentFragment()`, and two unnecessary type assertions were removed by relying on inferred DOM types. No behavior change.
+- Resolved two dev-only dependency advisories (`js-yaml` CVE-2026-59870 and a transitive `brace-expansion` DoS) via a non-breaking `npm audit fix`; production and full audits are both clean.
+
 ## [1.0.19] - 2026-07-24
 ### Added
 - **Hybrid table converter**: Confluence tables are now processed according to their complexity. Simple rectangular tables convert to standard GFM (Markdown) tables for a native Obsidian look; complex tables with rowspans, colspans, nested tables, or rich block-level content fall back to a strictly sanitized HTML representation. This ensures table data and structure are preserved without destructive flattening.
