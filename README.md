@@ -40,6 +40,10 @@ the wrong tool — it has no write capability (see
   incoming Confluence lines (blue). The preview is display-only: you either
   take the Confluence version in full (**Pull & Replace**) or keep your note
   as-is (**Cancel (Keep Local)**). There is no per-block merging.
+- **Hybrid Table Support**: Confluence tables are imported based on their
+  complexity. Simple tables convert to native Obsidian Markdown tables;
+  complex tables (with rowspans, colspans, nested tables, or rich content)
+  fall back to sanitized HTML to preserve data structure and spans.
 - **Empty-page protection**: If the Confluence page converts to an empty
   body, the pull is aborted instead of blanking your note.
 - **Image import** (optional, on by default): Confluence attachment images

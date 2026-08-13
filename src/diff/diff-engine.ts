@@ -4,6 +4,7 @@ import { gfm } from 'turndown-plugin-gfm';
 import { DiffResult, RemoteImageRef } from '../models';
 import { normalizeMarkdown } from '../utils/markdown-normalizer';
 import { PluginLogger } from '../utils/logger';
+import { resolveDownloadUrl } from '../utils/url-utils';
 
 const CALLOUT_TITLE_MAX_LENGTH = 200;
 const IMAGE_ALT_MAX_LENGTH = 120;
@@ -115,6 +116,158 @@ function hasLineThrough(node: HTMLElement): boolean {
     return /\btext-decoration\s*:\s*line-through\b/i.test(styleAttr);
 }
 
+/**
+ * Determines if a table is "simple" (convertible to rectangular GFM) or
+ * "complex" (requiring sanitized HTML fallback).
+ */
+function isSimpleTable(table: HTMLTableElement): boolean {
+    // Check the table element itself for attributes that require sanitization
+    const tableAttrs = Array.from(table.attributes);
+    for (const attr of tableAttrs) {
+        const attrName = attr.name.toLowerCase();
+        if (attrName.startsWith('on') || attrName === 'style' || attrName === 'class' || attrName === 'id') {
+            return false;
+        }
+    }
+
+    // 1. Spans make it complex
+    const cells = Array.from(table.querySelectorAll('td, th')) as HTMLTableCellElement[];
+    for (const cell of cells) {
+        const rowspan = parseInt(cell.getAttribute('rowspan') || '1', 10);
+        const colspan = parseInt(cell.getAttribute('colspan') || '1', 10);
+        if (rowspan > 1 || colspan > 1) return false;
+    }
+
+    // 2. GFM tables don't support nested tables, captions, footers, or
+    // multiple body sections.
+    if (table.querySelector('table, caption, tfoot')) return false;
+    if (table.querySelectorAll('tbody').length > 1) return false;
+
+    // 3. Check for block-rich content or potentially unsafe elements in cells
+    const blockSelectors = [
+        'ul', 'ol', 'pre', 'blockquote',
+        'ac\\:structured-macro', 'structured-macro',
+        'div[data-macro-name]',
+        'script', 'object', 'embed', 'iframe', 'form'
+    ];
+    for (const selector of blockSelectors) {
+        if (table.querySelector(`td ${selector}, th ${selector}`)) return false;
+    }
+
+    // 4. Rectangular requirement: every row must have the same cell count.
+    const rows = Array.from(table.querySelectorAll('tr'));
+    if (rows.length === 0) return true;
+    const colCount = rows[0].querySelectorAll('td, th').length;
+    for (let i = 1; i < rows.length; i++) {
+        if (rows[i].querySelectorAll('td, th').length !== colCount) return false;
+    }
+
+    // 5. Check all descendants for unsafe links or attributes that would be lost in GFM
+    const allInTable = Array.from(table.querySelectorAll('*'));
+    for (const el of allInTable) {
+        if (el.tagName.toLowerCase() === 'a') {
+            const href = el.getAttribute('href');
+            if (href && !isSafeHref(href)) return false;
+        }
+        const attrs = Array.from(el.attributes);
+        for (const attr of attrs) {
+            const attrName = attr.name.toLowerCase();
+            if (attrName.startsWith('on') || attrName === 'style' || attrName === 'class' || attrName === 'id') {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Strict sanitized HTML emitter for complex tables.
+ * Recursively produces safe HTML from a detached DOM subtree.
+ */
+class SafeHtmlEmitter {
+    private static readonly ALLOWED_TAGS = new Set([
+        'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption',
+        'colgroup', 'col', 'p', 'br', 'ul', 'ol', 'li', 'strong', 'em',
+        'code', 'pre', 'a', 'img', 'span', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'
+    ]);
+
+    private static readonly ALLOWED_ATTRS: Record<string, Set<string>> = {
+        'td': new Set(['colspan', 'rowspan', 'align', 'valign']),
+        'th': new Set(['colspan', 'rowspan', 'align', 'valign', 'scope']),
+        'a': new Set(['href', 'title']),
+        'img': new Set(['src', 'alt', 'title', 'width', 'height']),
+        'col': new Set(['width']),
+        'table': new Set(['width', 'border']),
+    };
+
+    static emit(node: Node): string {
+        if (node.nodeType === Node.TEXT_NODE) {
+            return this.escapeHtml(node.textContent || '');
+        }
+
+        if (node.nodeType !== Node.ELEMENT_NODE) return '';
+
+        const el = node as HTMLElement;
+        const tagName = el.tagName.toLowerCase();
+
+        // Recursively strip macros but keep their children (if any)
+        if (tagName.startsWith('ac:') || tagName.startsWith('ri:') ||
+            tagName === 'structured-macro' || el.hasAttribute('data-macro-name')) {
+            return Array.from(el.childNodes).map(child => this.emit(child)).join('');
+        }
+
+        if (!this.ALLOWED_TAGS.has(tagName)) {
+            return Array.from(el.childNodes).map(child => this.emit(child)).join('');
+        }
+
+        let html = `<${tagName}`;
+
+        const allowedAttrs = this.ALLOWED_ATTRS[tagName];
+        if (allowedAttrs) {
+            const attrs = Array.from(el.attributes)
+                .filter(attr => allowedAttrs.has(attr.name.toLowerCase()))
+                .sort((a, b) => a.name.localeCompare(b.name));
+
+            for (const attr of attrs) {
+                let value = attr.value;
+                if (attr.name.toLowerCase() === 'href' || attr.name.toLowerCase() === 'src') {
+                    if (!isSafeHref(value)) continue;
+                }
+                if (attr.name.toLowerCase() === 'colspan' || attr.name.toLowerCase() === 'rowspan') {
+                    const n = parseInt(value, 10);
+                    if (isNaN(n) || n < 1) continue;
+                    value = Math.min(n, 100).toString();
+                }
+                html += ` ${attr.name.toLowerCase()}="${this.escapeHtml(value)}"`;
+            }
+        }
+
+        if (this.isVoidElement(tagName)) {
+            html += ' />';
+            return html;
+        }
+
+        html += '>';
+        html += Array.from(el.childNodes).map(child => this.emit(child)).join('');
+        html += `</${tagName}>`;
+        return html;
+    }
+
+    private static isVoidElement(tag: string): boolean {
+        return ['br', 'img', 'col', 'hr'].includes(tag);
+    }
+
+    private static escapeHtml(text: string): string {
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+}
+
 export class DiffEngine {
     private logger?: PluginLogger;
 
@@ -131,23 +284,20 @@ export class DiffEngine {
     ): Promise<DiffResult> {
         this.logger?.info('=== DIFF ENGINE DEBUG START ===');
         const imageRefs: RemoteImageRef[] = [];
+        const complexTablePlaceholders = new Map<string, string>();
         const cleanHtml = this.preprocessStorageToCleanHtml(
             remoteStorageFormat,
             imageRefs,
+            complexTablePlaceholders,
             pageId,
             attachmentLinks,
             baseUrl
         );
-        const remoteMarkdown = this.turndownCleanHtml(cleanHtml);
+        const remoteMarkdown = this.turndownCleanHtml(cleanHtml, complexTablePlaceholders);
 
         const normalizedLocal = normalizeMarkdown(localMarkdown);
         const normalizedRemote = normalizeMarkdown(remoteMarkdown);
 
-        // A local note must never contain a literal placeholder token —
-        // tokens exist only inside the freshly-converted remote text and are
-        // replaced by link+marker pairs on apply. If a user pastes the raw
-        // token text it must count as a difference, so raw equality is
-        // short-circuited in that case.
         const localHasLiteralToken = imageRefs.some(ref => normalizedLocal.includes(ref.token));
         let areIdentical = !localHasLiteralToken && normalizedLocal === normalizedRemote;
 
@@ -171,16 +321,13 @@ export class DiffEngine {
                             : `attachment:${ref.filename.trim()}`;
                     }
                 } else if (ref.kind === 'url' && ref.url) {
-                    identity = `url:${ref.url}`;
+                    const resolved = resolveDownloadUrl(baseUrl || '', ref.url);
+                    identity = `url:${resolved || ref.url}`;
                 }
 
                 if (identity) {
                     const marker = buildImageMarker(identity);
                     const escapedMarker = marker.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
-                    // Adjacency is strict: the marker must follow the image
-                    // link on the SAME line (spaces/tabs only). `\s*` would
-                    // let a marker several blank lines away pair with an
-                    // unrelated earlier image.
                     const localPattern = new RegExp(
                         `(!\\[[^\\]\\n]*\\]\\([^)\\n]*\\)|!\\[\\[[^\\]\\n]*\\]\\])[ \\t]*${escapedMarker}`,
                         'g'
@@ -205,14 +352,6 @@ export class DiffEngine {
         };
     }
 
-    /**
-     * Lightweight pre-scan: parse the storage XHTML and collect image refs
-     * WITHOUT running the full preprocess/Turndown pipeline. Used by the
-     * sync service to learn which attachment filenames the page references
-     * so attachment metadata pagination can stop as soon as all of them are
-     * resolved. Identity here intentionally omits download/version (metadata
-     * is not fetched yet); only `kind`/`filename` are consumed by callers.
-     */
     extractImageRefs(storageFormat: string): RemoteImageRef[] {
         const refs: RemoteImageRef[] = [];
         const parser = new DOMParser();
@@ -221,18 +360,10 @@ export class DiffEngine {
         return refs;
     }
 
-    /**
-     * Parse raw Confluence storage into a detached document, apply all DOM
-     * pre-processing, and serialize back to a string via XMLSerializer
-     * (no innerHTML access). Returning a STRING (not the live node) matters
-     * for memory: Turndown clones any node input wholesale (cloneNode(true)),
-     * which would keep two full DOM trees alive at once on large pages. With
-     * a string, the pre-processing document is garbage-collectable before
-     * Turndown builds its own tree.
-     */
     private preprocessStorageToCleanHtml(
         storageFormat: string,
         imageRefs: RemoteImageRef[],
+        complexTablePlaceholders: Map<string, string>,
         pageId?: string,
         attachmentLinks?: Map<string, { download: string; version: number }>,
         baseUrl?: string
@@ -242,17 +373,58 @@ export class DiffEngine {
 
         this.extractImages(doc, imageRefs, pageId, attachmentLinks);
 
-        /**
-         * Helper to create nodes using Obsidian's createEl and safely
-         * adopting them into our processing document (no direct document
-         * element construction).
-         */
         const create = <K extends keyof HTMLElementTagNameMap>(tag: K): HTMLElementTagNameMap[K] => {
             const el = createEl(tag);
             return doc.adoptNode(el);
         };
 
-        // SECURITY: neutralize anchors with dangerous URL schemes
+        // 1. Pre-process Tables
+        doc.querySelectorAll('table').forEach(table => {
+            if (isSimpleTable(table as HTMLTableElement)) {
+                table.querySelectorAll('colgroup, col').forEach(el => el.remove());
+
+                let thead = table.querySelector('thead');
+                if (!thead) {
+                    const firstRow = table.querySelector('tr');
+                    if (firstRow) {
+                        thead = create('thead');
+                        thead.appendChild(firstRow);
+                        firstRow.querySelectorAll('td').forEach(td => {
+                            const th = create('th');
+                            while (td.firstChild) th.appendChild(td.firstChild);
+                            Array.from(td.attributes).forEach(attr => th.setAttribute(attr.name, attr.value));
+                            td.parentNode?.replaceChild(th, td);
+                        });
+                        table.insertBefore(thead, table.firstChild);
+                    }
+                }
+
+                table.querySelectorAll('td, th').forEach(cell => {
+                    // Normalize p/div to content + <br> to keep GFM compatibility
+                    const blocks = Array.from(cell.querySelectorAll('p, div'));
+                    blocks.forEach((block, idx) => {
+                        const fragment = doc.createDocumentFragment();
+                        while (block.firstChild) fragment.appendChild(block.firstChild);
+                        if (idx < blocks.length - 1) {
+                            fragment.appendChild(create('br'));
+                        }
+                        block.parentNode?.replaceChild(fragment, block);
+                    });
+
+                    // Protect pipes in simple cells to keep GFM structure
+                    this.escapePipesInNode(cell);
+                });
+            } else {
+                const sanitizedHtml = SafeHtmlEmitter.emit(table);
+                // Protect sanitized HTML from Turndown escaping by using a placeholder.
+                const placeholder = `%%CFCOMPLEXTABLE-${deterministicHash(sanitizedHtml).slice(0, 12)}%%`;
+                complexTablePlaceholders.set(placeholder, sanitizedHtml);
+                const fallback = doc.createTextNode(`\n\n${placeholder}\n\n`);
+                table.parentNode?.replaceChild(fallback, table);
+            }
+        });
+
+        // 2. SECURITY: neutralize anchors with dangerous URL schemes (outside tables or in simple ones)
         doc.querySelectorAll('a[href]').forEach(anchor => {
             const href = anchor.getAttribute('href') || '';
             if (!isSafeHref(href)) {
@@ -261,39 +433,6 @@ export class DiffEngine {
             }
         });
 
-        // 1. Pre-process Tables
-        doc.querySelectorAll('table').forEach(table => {
-            table.querySelectorAll('colgroup, col').forEach(el => el.remove());
-
-            let thead = table.querySelector('thead');
-            if (!thead) {
-                const firstRow = table.querySelector('tr');
-                if (firstRow) {
-                    thead = create('thead');
-                    thead.appendChild(firstRow);
-                    firstRow.querySelectorAll('td').forEach(td => {
-                        const th = create('th');
-                        while (td.firstChild) th.appendChild(td.firstChild);
-                        Array.from(td.attributes).forEach(attr => th.setAttribute(attr.name, attr.value));
-                        td.parentNode?.replaceChild(th, td);
-                    });
-                    table.insertBefore(thead, table.firstChild);
-                }
-            }
-
-            table.querySelectorAll('td, th').forEach(cell => {
-                cell.querySelectorAll('p, div').forEach(block => {
-                    const fragment = new DocumentFragment();
-                    while (block.firstChild) fragment.appendChild(block.firstChild);
-                    block.parentNode?.replaceChild(fragment, block);
-                });
-                cell.querySelectorAll('br').forEach(br => {
-                    br.parentNode?.replaceChild(doc.createTextNode(' '), br);
-                });
-            });
-        });
-
-        // 2. Pre-process strikethrough in headings
         const headingsToReplace: Array<{ heading: Element, paragraph: Element }> = [];
         doc.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(heading => {
             const strikethroughElements = heading.querySelectorAll('del, s, strike');
@@ -315,7 +454,6 @@ export class DiffEngine {
             heading.parentNode?.replaceChild(paragraph, heading);
         });
 
-        // 3. Pre-process Headings with <br>
         doc.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(heading => {
             const brs = heading.querySelectorAll('br');
             if (brs.length > 0) {
@@ -343,7 +481,7 @@ export class DiffEngine {
                 if (currentSegment.trim()) segments.push(currentSegment.trim());
 
                 if (segments.length > 1) {
-                    const fragment = new DocumentFragment();
+                    const fragment = doc.createDocumentFragment();
                     const newHeading = create(level);
                     newHeading.textContent = segments[0];
                     fragment.appendChild(newHeading);
@@ -359,7 +497,6 @@ export class DiffEngine {
             }
         });
 
-        // 4. Pre-process List Items
         doc.querySelectorAll('li h1, li h2, li h3, li h4, li h5, li h6').forEach(h => {
             const span = create('span');
             while (h.firstChild) span.appendChild(h.firstChild);
@@ -367,10 +504,11 @@ export class DiffEngine {
         });
 
         doc.querySelectorAll('li').forEach(li => {
-            li.querySelectorAll('p').forEach((p, idx) => {
-                const fragment = new DocumentFragment();
+            const paragraphs = Array.from(li.querySelectorAll('p'));
+            paragraphs.forEach((p, idx) => {
+                const fragment = doc.createDocumentFragment();
                 while (p.firstChild) fragment.appendChild(p.firstChild);
-                if (idx < li.querySelectorAll('p').length - 1) fragment.appendChild(create('br'));
+                if (idx < paragraphs.length - 1) fragment.appendChild(create('br'));
                 p.parentNode?.replaceChild(fragment, p);
             });
         });
@@ -383,7 +521,6 @@ export class DiffEngine {
             }
         });
 
-        // 5. Simplify namespaces
         doc.querySelectorAll('*').forEach(el => {
             Array.from(el.attributes).forEach(attr => {
                 if (attr.name.includes(':')) {
@@ -394,16 +531,10 @@ export class DiffEngine {
             });
         });
 
-        // Serialize WITHOUT innerHTML: XMLSerializer is a standard DOM API.
-        // Turndown re-parses this string in its own scope, so the
-        // pre-processing document above can be garbage-collected first.
         return new XMLSerializer()
             .serializeToString(doc.body)
-            // Unwrap the <body> element and its serializer-added xmlns.
             .replace(/^<body[^>]*>/i, '')
             .replace(/<\/body>$/i, '')
-            // Final cleanup for tag names that may keep colon prefixes in
-            // some environments.
             .replace(/<ac:([\w-]+)/gi, '<$1')
             .replace(/<\/ac:([\w-]+)/gi, '</$1')
             .replace(/<ri:([\w-]+)/gi, '<$1')
@@ -498,7 +629,24 @@ export class DiffEngine {
         });
     }
 
-    private turndownCleanHtml(cleanHtml: string): string {
+    private buildExpectedFilename(pageId: string, identity: string, originalName: string): string {
+        const ext = originalName.split('.').pop()?.toLowerCase() || 'bin';
+        const safePageId = pageId.replace(/[^0-9a-zA-Z]/g, '').slice(0, 20) || 'page';
+        return `confluence-${safePageId}-${deterministicHash(identity).slice(0, 12)}.${ext}`;
+    }
+
+    /**
+     * Recursively find all text nodes in a subtree and escape pipes.
+     */
+    private escapePipesInNode(node: Node): void {
+        if (node.nodeType === Node.TEXT_NODE) {
+            node.textContent = (node.textContent || '').replace(/\|/g, '%%CFPIPE%%');
+        } else {
+            Array.from(node.childNodes).forEach(child => this.escapePipesInNode(child));
+        }
+    }
+
+    private turndownCleanHtml(cleanHtml: string, complexTablePlaceholders?: Map<string, string>): string {
         const turndownService = new TurndownService({
             headingStyle: 'atx',
             codeBlockStyle: 'fenced',
@@ -591,6 +739,16 @@ export class DiffEngine {
             .replace(/^\\-/gm, '-')
             .replace(/\\\[/g, '[')
             .replace(/\\]/g, ']');
+
+        // Restore escaped pipes in simple tables
+        markdown = markdown.split('%%CFPIPE%%').join('\\|');
+
+        // Restore complex table HTML from placeholders.
+        if (complexTablePlaceholders) {
+            for (const [placeholder, sanitizedHtml] of complexTablePlaceholders.entries()) {
+                markdown = markdown.split(placeholder).join(sanitizedHtml);
+            }
+        }
 
         return markdown;
     }

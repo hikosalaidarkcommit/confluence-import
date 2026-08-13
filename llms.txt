@@ -12,8 +12,10 @@ Plugin id: confluence-import. Author: hikosalaidarkcommit. License: MIT.
   Markdown note (ribbon icon, command palette, or context menu).
 - Read-only diff preview before writing: Pull & Replace (take the Confluence
   version in full) or Cancel (Keep Local) (zero writes).
-- Converts Confluence storage format to Markdown internally — no external
-  Pandoc or CLI tools required.
+- Internal conversion from Confluence storage format to Markdown; no external
+  tools required.
+- Hybrid table converter: converts simple tables to GFM and complex tables
+  (with spans/nested/rich content) to sanitized HTML fallback.
 - Records the imported page version in `confluence-version` frontmatter;
   preserves other frontmatter properties.
 - Credential guard: requests only go to the exact protocol + host of the

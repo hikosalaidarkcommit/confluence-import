@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.19] - 2026-07-24
+### Added
+- **Hybrid table converter**: Confluence tables are now processed according to their complexity. Simple rectangular tables convert to standard GFM (Markdown) tables for a native Obsidian look; complex tables with rowspans, colspans, nested tables, or rich block-level content fall back to a strictly sanitized HTML representation. This ensures table data and structure are preserved without destructive flattening.
+- **Table security & fidelity**: Fallback HTML is sanitized to an allowlist of 21 tags and structural attributes (colspan/rowspan limits applied). Dangerous URL schemes and interactive elements are stripped. Confluence macros inside complex tables are flattened to plain text/content.
+- **Detailed table tests**: Comprehensive test suite covering simple GFM path, complex spans, nested tables, rich cells, and a full de-identified private-page synthetic fixture.
+
 ## [1.0.18] - 2026-07-24
 ### Fixed
 - Community review cleanups: image download timeout now uses `window.setTimeout`/`window.clearTimeout` (popout-window compatibility per Obsidian plugin guidelines) instead of the global timer APIs, and an unused type import was removed from the sync service. No behavior change.
